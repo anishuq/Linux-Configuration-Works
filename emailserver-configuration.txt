@@ -1,0 +1,565 @@
+EMAIL SERVER
+============
+
+Fill in!
+
+Name: A. M. Anisul Huq	 
+Student number: 82372J
+
+
+==========================================================
+
+		   Notice:
+
+I got the following instruction for this assignment:
+
+"Several answers did not have any sources listed and a point 
+has been deducted from those."	
+
+Hence, I have provided sources to the related questions.
+
+
+==========================================================
+
+
+In this exercise you will setup an email server with a filter
+(spamassassin).
+
+
+
+1. Preparation
+===============================================================================
+
+In this assignment, you need two hosts (lab1 and lab2). Configure the
+network between the hosts and add the IPv4 addresses and aliases on
+both computers to the /etc/hosts. Stop daemons that might be listening
+on the default smtp port.
+
+hosts (5), netstat (8)
+
+
+On both the machines, inside the /etc/hosts file:====>
+
+10.0.19.1 lab1
+10.0.19.2 lab2
+
+[root@lab1 ~]# hostname
+lab1
+
+[root@localhost ~]# hostname
+lab2
+
+2. Installing software
+===============================================================================
+
+On lab1, verify that the following packages are installed (rpm -qa):
+
+postfix, procmail, spamassassin, and mailx.
+
+They were already installed in lab1
+
+[root@lab1 ~]# rpm -qa | grep postfix
+postfix-2.3.3-2.1.el5_2
+[root@lab1 ~]# rpm -qa | grep procmail
+procmail-3.22-17.1.el5.centos
+[root@lab1 ~]# rpm -qa | grep spamassassin
+spamassassin-3.2.5-1.el5
+[root@lab1 ~]# rpm -qa | grep mailx
+mailx-8.1.1-44.2.2
+
+
+On lab2, verify that the following package is installed: mailx.
+
+[root@localhost ~]# rpm -qa | grep mailx
+mailx-8.1.1-44.2.2
+
+
+3. Configuring and testing postfix
+===============================================================================
+
+Edit postfix main configuration file (main.cf, postconf (5)) on
+lab1. You have to change following fields:
+
+    * myhostname (from /etc/hosts)
+    * mydestination
+    * mynetworks (localhost and virtual machines IP block)
+
+Disable ETRN and VRFY commands. Remember to reload postfix
+configuration (/etc/init.d/postfix).
+
+Configure the sendmail mail on lab2 to send email message to postfix
+on lab1.  Edit /etc/mail/submit.cf file on lab2 and add value "lab1."
+to the DS parameter.
+
+Send a message from lab2 to root@lab1 using mail (1). Read the message
+on lab1 (with mail (1)). See also email message headers. See incoming
+message information from /var/log/maillog using tail (1).
+
+=====================================================================
+[Edited]
+
+[Comment: One new source is added.]
+
+Configurations and commands:
+In lab1 (VM1), in order to configure the MTA to recieve mail, I modified
+the /etc/postfix/main.cf with the following commmand:
+
+postconf -e "inet_interfaces =all"
+
+Then, I ran: service sendmail stop;
+
+To make postfix the active MTA, I did:
+alternatives --set mta /usr/sbin/sendmail.postfix
+
+
+In lab2, I gave the following to send email:
+[root@lab2 ~]# echo "hello lab1" | mail -v -s hello root@lab1
+
+Source: http://blogimg.chinaunix.net/blog/upfile2/080730231143.pdf
+        http://www.mombu.com/gnu_linux/red-hat/t-email-server-on-my-box-3172634.html
+        http://dailypackage.fedorabook.com/index.php?/archives/6-Wednesday-Why-The-Alternatives-System.html#extended
+	
+	[Added:]
+        http://blogimg.chinaunix.net/blog/upfile2/080730231143.pdf
+
+=====================================================================
+
+
+
+
+3.1 Explain shortly all the fields of incoming mail log message (from
+    /var/log/maillog) [3p]  [Edited]
+    -----------------------------------------------------------------
+
+
+[Comment: New sources are added.]
+
+In lab1, I got the following message:
+
+[root@lab1 ~]# tail -f /var/log/maillog
+Nov 17 21:47:46 localhost postfix/local[24965]: warning: host not found: localhost
+Nov 17 21:47:46 localhost postfix/qmgr[24945]: 3F63F1018E: removed
+Nov 18 03:54:19 localhost postfix/smtpd[25049]: connect from lab2.localdomain[10.0.19.2]
+Nov 18 03:54:19 localhost postfix/smtpd[25049]: 3549B1018E: client=lab2.localdomain[10.0.19.2]
+Nov 18 03:54:19 localhost postfix/cleanup[25052]: 3549B1018E: message-id=<200911180154.nAI1sJYb020010@lab2>
+Nov 18 03:54:19 localhost postfix/qmgr[24945]: 3549B1018E: from=<root@lab2.localdomain>, size=455, nrcpt=1 (queue active)
+Nov 18 03:54:19 localhost postfix/smtpd[25049]: disconnect from lab2.localdomain[10.0.19.2]
+Nov 18 03:54:19 localhost postfix/local[25053]: 3549B1018E: to=<root@lab1.localdomain>, orig_to=<root@lab1>, relay=local, delay=0.09, delays=0.08/0.01/0/0.01, dsn=2.0.0, status=sent (delivered to mailbox)
+Nov 18 03:54:19 localhost postfix/local[25053]: warning: host not found: localhost
+Nov 18 03:54:19 localhost postfix/qmgr[24945]: 3549B1018E: removed
+
+Explanation:
+
+smtpd[25049]: connect from lab2.localdomain[10.0.19.2]
+The STMP daemon is now connecteced to a remote host called lab2.
+
+smtpd[25049]: 3549B1018E: client=lab2.localdomain[10.0.19.2]
+indicates to the client information for the unique mail # 3549B1018E.
+
+
+cleanup[25052]: 3549B1018E: message-id=<200911180154.nAI1sJYb020010@lab2>
+The cleanup daemon processes the incoming email and inserts it into the queue for incoming mail.
+
+ 
+qmgr[24945]: 3549B1018E: from=<root@lab2.localdomain>, size=455, nrcpt=1 (queue active)
+Incoming messages get in to the queue by the process qmgr (pid = 24945). Log shows that,  
+mail came from "root@lab2.localdomain". The "size" of the message is 455 bytes and "nrcpt" 
+shows that there is only 1 recipient.
+
+
+smtpd[25049]: disconnect from lab2.localdomain[10.0.19.2]
+
+local[25053]: 3549B1018E: to=<root@lab1.localdomain>, orig_to=<root@lab1>, relay=local, delay=0.09, delays=0.08/0.01/0/0.01, dsn=2.0.0, status=sent (delivered to mailbox)
+The field "to" shows that, the recipient's address is: root@lab1.localdomain. 
+The "delay" field gives the time to deliver the message and "status" 
+describes that the message is successfully sent. 
+
+
+qmgr[24945]: 3549B1018E: removed
+Lastly, the message is removed from the queue by qmgr.
+
+
+[Added:]
+Source: http://onlamp.com/pub/a/onlamp/2004/01/22/postfix.html
+
+	Postfix: The Definitive Guide
+		By Kyle D. Dent
+		Publisher: O'Reilly
+		Pub Date: December 2003
+		ISBN: 0-596-00212-2
+		http://rapidshare.com/files/9857817/O_Reilly_-_Postfix_The_Definitive_Guide.pdf
+
+
+3.2 Explain shortly all the fields of email headers [4p] [Edited]
+--------------------------------------------------------
+
+[Comment: New sources are added.]
+
+
+I got the following in lab1 by:
+nano /var/spool/mail/root
+
+From root@lab2.localdomain  Wed Nov 18 03:54:19 2009
+Return-Path: <root@lab2.localdomain>
+X-Original-To: root@lab1
+Delivered-To: root@lab1.localdomain
+Received: from lab2 (lab2.localdomain [10.0.19.2])
+        by lab1.localdomain (Postfix) with ESMTP id 3549B1018E
+        for <root@lab1>; Wed, 18 Nov 2009 03:54:19 +0200 (EET)
+Received: (from root@localhost)
+        by lab2 (8.13.8/8.13.8/Submit) id nAI1sJYb020010
+        for root@lab1; Wed, 18 Nov 2009 03:54:19 +0200
+Date: Wed, 18 Nov 2009 03:54:19 +0200
+From: root <root@lab2>
+Message-Id: <200911180154.nAI1sJYb020010@lab2>
+To: root@lab1
+Subject: hello
+
+hello lab1
+====================================================
+
+Explanation of different fields in the email header:
+
+From root@lab2.localdomain  Wed Nov 18 03:54:19 2009
+Sender address of the email.
+
+Return-Path: <root@lab2.localdomain>
+Shows the originator of the email. 
+
+
+X-Original-To: root@lab1
+Destination of the email.
+
+Delivered-To: root@lab1.localdomain
+It shows that the email was delivered to the mailbox of root@lab1.localdomain.  
+
+
+Received: (from root@localhost)
+        by lab2 (8.13.8/8.13.8/Submit) id nAI1sJYb020010
+        for root@lab1; Wed, 18 Nov 2009 03:54:19 +0200
+It shows the route this email took while travelling from source to destination. 
+
+
+Date: Wed, 18 Nov 2009 03:54:19 +0200
+Shows the timestamp of this message.
+
+From: root <root@lab2>
+
+Message-Id: <200911180154.nAI1sJYb020010@lab2>
+There are two parts of the message-id separated by a dot(.).
+The first part defines the id; while the second is the domain which originates the message.
+
+To: root@lab1
+Shows the receipient of this email.
+
+Subject: hello
+Subject of the email.
+
+
+[Added:]
+Source: http://www.faqs.org/rfcs/rfc822.html
+	http://lists.tummy.com/pipermail/vpostmaster/2006-February/000186.html
+	http://mail.google.com/support/bin/answer.py?hl=en&answer=29436
+
+
+3.3 What is the purpose of the main.cf setting "mydestination"? [2p] [Edited]
+--------------------------------------------------------------------
+
+[Comment: New source is added.]
+
+Answer:
+
+"mydestination" field defines, to which domains this server will 
+deliver mails locally (rather than forwarding).
+
+[Added:]
+Source: http://www.postfix.org/BASIC_CONFIGURATION_README.html
+
+
+3.4 Why is it a really bad idea to set mynetworks broader than
+necessary (e.g. to 0.0.0.0/1)? [2p] [Edited]
+--------------------------------------------------------------
+
+[Comment: New sources are added.]
+
+Answer:
+
+The "mynetworks" field defines which networks can be trusted by the mail server. So if "mynetworks"
+defines a larger network, it means the mail server trusts larger number of hosts. This can 
+make the mail server vulnerable; enabling spammers to send spams.
+
+
+[Added:]
+Source: http://www.postfix.org/postconf.5.html#mynetworks
+	http://www.comptechdoc.org/os/linux/manual4/emailserver.html
+
+
+4. Configuring procmail and spamassassin
+===============================================================================
+
+Edit /etc/procmailrc (5) and add the following line:
+
+:0fw
+| /usr/bin/spamassassin
+
+In main.cf, you have to enable procmail with the line
+
+/usr/bin/procmail -f- -a "$USER"
+
+to the appropriate field (hint: mailbox_command). Remember to reload
+the postfix configuration.
+
+In addition, you might need to assign a home directory for the nobody
+user:
+
+usermod --home /home/nobody -m nobody
+
+and for this assignment, stretch permissions to access /var/mail
+directory:
+
+chmod 1777 /var/mail .
+
+
+
+5. Sending and receiving email
+===============================================================================
+
+Send an email message from lab2 to root@lab1. Read the message on lab1
+(with mail -u nobody (1)). See email headers and log messages from
+maillog. If you do not see spamassassin headers, there is something
+wrong, go back to previous step and see /var/log/maillog.
+
+--------------------------------------------------------------------------------
+Configuration, commands and output:
+I edited the main.cf with the command:
+postconf -e "mailbox_command=/usr/bin/procmail" 
+
+also had to create:
+mkdir /home/nobody
+
+The rest was according to the instructions of question 4. 
+ 
+Output:
+
+[root@lab1 ~]# tail -f /var/log/maillog
+Nov 18 21:52:19 localhost postfix/master[24942]: terminating on signal 15
+Nov 18 21:52:19 localhost postfix/postfix-script: starting the Postfix mail system
+Nov 18 21:52:19 localhost postfix/master[25890]: daemon started -- version 2.3.3, configuration /etc/postfix
+Nov 18 21:53:26 localhost postfix/smtpd[25894]: connect from lab2.localdomain[10.0.19.2]
+Nov 18 21:53:26 localhost postfix/smtpd[25894]: B4E77101C9: client=lab2.localdomain[10.0.19.2]
+Nov 18 21:53:26 localhost postfix/cleanup[25897]: B4E77101C9: message-id=<200911181953.nAIJrQ7f021295@lab2>
+Nov 18 21:53:26 localhost postfix/qmgr[25892]: B4E77101C9: from=<root@lab2.localdomain>, size=450, nrcpt=1 (queue active)
+Nov 18 21:53:26 localhost postfix/smtpd[25894]: disconnect from lab2.localdomain[10.0.19.2]
+Nov 18 21:53:28 localhost postfix/local[25898]: B4E77101C9: to=<root@lab1.localdomain>, orig_to=<root@lab1>, relay=local, delay=1.9, delays=0.06/0.01/0/1.9, dsn=2.0.0, status=sent (delivered to command: /usr/bin/procmail)
+Nov 18 21:53:28 localhost postfix/qmgr[25892]: B4E77101C9: removed
+
+
+[root@lab1 ~]# nano /var/mail/nobody
+From root@lab2.localdomain  Wed Nov 18 21:53:26 2009
+Return-Path: <root@lab2.localdomain>
+X-Spam-Flag: YES
+X-Spam-Checker-Version: SpamAssassin 3.2.5 (2008-06-10) on lab1
+X-Spam-Level: *****
+X-Spam-Status: Yes, score=5.1 required=5.0 tests=ALL_TRUSTED,FH_FROMEML_NOTLD,
+        NO_DNS_FOR_FROM,TO_MALFORMED,TVD_SPACE_RATIO autolearn=no version=3.2.5
+X-Spam-Report:
+        *  1.4 NO_DNS_FOR_FROM DNS: Envelope sender has no MX or A DNS records
+        * -1.4 ALL_TRUSTED Passed through trusted hosts only via SMTP
+        *  0.0 TO_MALFORMED To: has a malformed address
+        *  2.2 FH_FROMEML_NOTLD E-mail address doesn't have TLD (.com, etc.)
+        *  2.9 TVD_SPACE_RATIO BODY: TVD_SPACE_RATIO
+X-Original-To: root@lab1
+Delivered-To: root@lab1.localdomain
+Received: from lab2 (lab2.localdomain [10.0.19.2])
+        by lab1.localdomain (Postfix) with ESMTP id B4E77101C9
+        for <root@lab1>; Wed, 18 Nov 2009 21:53:26 +0200 (EET)
+Received: (from root@localhost)
+        by lab2 (8.13.8/8.13.8/Submit) id nAIJrQ7f021295
+        for root@lab1; Wed, 18 Nov 2009 21:53:26 +0200
+Date: Wed, 18 Nov 2009 21:53:26 +0200
+From: root <root@lab2>
+Message-Id: <200911181953.nAIJrQ7f021295@lab2>
+To: root@lab1
+Subject: [SPAM] hello
+X-Spam-Prev-Subject: hello
+Status: O
+
+hello
+
+
+Source: http://blog.sushilsuresh.co.uk/2008/10/rhce.html
+
+
+
+--------------------------------------------------------------------------------
+
+
+5.1 How can you automatically filter spam messages to a different
+    folder using procmail? (Hint: the correct answer is about three
+    lines without any comments) [2p]
+    ----------------------------------------------------------------------
+
+
+Answer:
+
+:0 w :$SPAMFOLDER/.lock
+* ^X-spam-status: Yes
+:$SPAMFOLDER/.
+
+Here, $SPAMFOLDER can be replaced by the path of any folder of my choosing.
+
+Source: http://acms.ucsd.edu/students/email/procmail.shtml
+
+
+5.2 Explain briefly the additional email headers (compared to step
+    3.2) [2p] [Edited]
+    --------------------------------------------------------------
+
+[Comment: New source is added.]
+
+
+"X-Spam-Flag: YES" means that Spamassassin believes this is a spam email.
+
+X-Spam-Checker-Version: SpamAssassin 3.2.5 (2008-06-10) on lab1
+Shows the spam filter's name with version and the location where it is running.
+
+
+X-Spam-Level: *****
+Level is shown using "stars". The number of "stars" define how strongly SpamAssassin
+believes that, this message is a spam. 
+
+
+X-Spam-Status: Yes, score=5.1 required=5.0 tests=ALL_TRUSTED,FH_FROMEML_NOTLD,
+        NO_DNS_FOR_FROM,TO_MALFORMED,TVD_SPACE_RATIO autolearn=no version=3.2.5
+
+"Yes" means that SpamAssassin believes that this is a spam.
+"required" field shows the minimum number needed for an email to be labeled as spam. 
+"tests" field shows a list of all the rules that this email matched. 
+"autolearn = no" means there will be "no learning" from the spam and non-spam messages
+(for future detection of potential spam emails)that passes through this email server.	 
+"version" shows the version of SpamAssassin. 
+
+
+
+X-Spam-Report:
+        *  1.4 NO_DNS_FOR_FROM DNS: Envelope sender has no MX or A DNS records
+        * -1.4 ALL_TRUSTED Passed through trusted hosts only via SMTP
+        *  0.0 TO_MALFORMED To: has a malformed address
+        *  2.2 FH_FROMEML_NOTLD E-mail address doesn't have TLD (.com, etc.)
+        *  2.9 TVD_SPACE_RATIO BODY: TVD_SPACE_RATIO
+
+SpamAssassin performs numerous tests while it attempts to filter spam. The name 
+of such a test will only come with the header only if an email has failed that test. For example: 
+
+in the entry "1.4 NO_DNS_FOR_FROM DNS: Envelope sender has no MX or A DNS records"; 
+1.4 is the socre for not passing the test "NO_DNS_FOR_FROM". The rest are just detailed 
+information about "NO_DNS_FOR_FROM" test.
+
+
+Source: http://www.modwest.com/help/kb9-342.html
+        https://ccrma.stanford.edu/wiki/Spam_Control_at_CCRMA
+	
+
+	[Added:]
+	http://www.ucs.ed.ac.uk/email/SpamAssassin/SpamRating.html
+
+
+
+6. Final questions and reporting
+===============================================================================
+
+Include only changed fields from main.cf to your report. Do not copy
+the whole main.cf to your answer. diff (1) is quite useful for finding
+changed lines. You are required to include the typed commands and
+their outputs. See instructions on Taking notes.
+
+------------------------------------------------------------------------
+
+[root@lab1 ~]# diff -u /root/emailBackUp/main.cf /etc/postfix/main.cf
+--- /root/emailBackUp/main.cf   2009-11-16 19:42:15.000000000 +0200
++++ /etc/postfix/main.cf        2009-11-20 20:39:06.000000000 +0200
+@@ -107,7 +107,7 @@
+ #inet_interfaces = all
+ #inet_interfaces = $myhostname
+ #inet_interfaces = $myhostname, localhost
+-inet_interfaces = localhost
++inet_interfaces = all
+
+ # The proxy_interfaces parameter specifies the network interface
+ # addresses that this mail system receives mail on by way of a
+@@ -665,3 +665,6 @@
+ # readme_directory: The location of the Postfix README files.
+ #
+ readme_directory = /usr/share/doc/postfix-2.3.3/README_FILES
++mailbox_command = /usr/bin/procmail
++smtpd_etrn_restrictions = reject
++disable_vrfy_command = yes
+
+====> The last two line shows that, ETRN and VRFY commands
+      were disabled.
+
+------------------------------------------------------------------------
+
+
+6.1 What is the MX record in a DNS system? [2p] [Edited]
+-----------------------------------------------
+
+[Comment: New sources are added.]
+
+Answer:
+
+MX or Mail Exchange record defines which mail server will handle emails for a particular domain. If a 
+single domain needs to have more than one mail server, then there has to be multiple MX records. 
+There is a preference number attached to each MX record that defines the priority of that mail 
+server.
+
+[Added:]
+Source: http://en.wikipedia.org/wiki/MX_record
+	http://hosting.intermedia.net/support/kb/default.asp?id=903
+
+
+
+6.2 Explain briefly two ways to make redundant email servers using
+    multiple servers and dns? (hint: see MX records for hut.fi,
+    smtp.hut.fi and tml.hut.fi) [4p] [Edited]
+------------------------------------------------------------------
+
+[Comment: New sources are added.]
+
+Answer:
+The most easy way to make redundant email servers is to have multiple MX records with different priorities. 
+The mail server with the lowest number has the highest priority. Mail will be first transferred to the server 
+with the highest priority. If that mail server is unavailable for some reason, then mail will be sent to 
+server with the closest priority (i.e. closest to the highest one and so on). 
+
+[root@lab1 ~]# dig tml.hut.fi MX +noall +answer
+tml.hut.fi.             38201   IN      MX      20 smtp.hut.fi.
+tml.hut.fi.             38201   IN      MX      10 mail.tml.hut.fi.
+
+
+The second way, is to have multiple mail servers with same priority and common name. Apart from providing 
+redundency when one mail server is down; this mechanism also allows load balancing.   
+
+[root@lab1 ~]# dig smtp.hut.fi MX +noall +answer
+smtp.hut.fi.            30      IN      MX      15 smtp-3.hut.fi.
+smtp.hut.fi.            30      IN      MX      15 smtp-4.hut.fi.
+smtp.hut.fi.            30      IN      MX      15 smtp-1.hut.fi.
+smtp.hut.fi.            30      IN      MX      15 smtp-2.hut.fi.
+
+
+[Added:]
+Source: http://www.spamstopshere.com/services/antispam/technical_details.html
+	http://www.zytrax.com/books/dns/ch9/rr.html#mail
+	http://www.postini.com/webdocs/activate/msg_security/wwhelp/wwhimpl/common/html/wwhelp.htm?context=msg_security&file=mx_faq.html
+
+
+Finishing your work
+===============================================================================
+
+When finishing your work, copy your work to the /root/answers
+directory on the first laboratory machine and to a safe place
+(e.g. your home directory in Niksula or the Computer Center).
+
+
+
+

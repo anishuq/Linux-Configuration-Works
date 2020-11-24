@@ -1,0 +1,556 @@
+Network Filesystems
+===================
+
+Fill in!
+
+Name:	A. M. Anisul Huq
+Student number:82372J
+
+===============================================================================
+			Notice:
+
+only 3.3 is edited and re-written.
+
+
+===============================================================================
+
+In this exercise you will setup various network filesystems. You have
+to compare network filesystems shortly using internet (or book)
+sources and your own experiments.
+
+Material
+
+    * Samba
+    * NFS: f.e. sourceforge or wikipedia
+    * sshfs (and FUSE)
+
+
+You are required to include the typed commands and their outputs as
+usual. See lab instructions.
+
+
+1.  Preparation
+===============================================================================
+
+Log on to two virtual computers (Machine 1 and Machine 2). Add IPv4
+aliases (lab1 and lab2) on both the computers to /etc/hosts (see "man
+hosts").
+
+Add static addresses to both Lab 1's and Lab 2's eth1 interfaces.
+
+Create two new users (e.g. "testuser1" and "testuser2") with adduser
+to both the computers. Ensure that the users have the same UIDs on
+both computers (e.g. testuser1 UID is 1001 on lab1 and lab2, testuser2
+UID is 1002). The easiest way to do this is to create both users in
+the same order to both the computers.
+
+
+Answer: 
+
+Added the following lines in the /etc/hosts file in virtual machine 1
+and 2 respectively for aliases:
+
+10.0.19.1  localhost  lab1
+10.0.19.2  localhost  lab2
+
+Added static IP addresses in both machines by editing (/etc/sysconfig/network-scripts/ifcfg-eth1):
+IPADDR=192.168.1.3
+IPADDR=192.168.1.4
+
+Added users alice in machine1 and machine2 and bob only in machine2:
+useradd -c "machine1" alice
+useradd -c "machine2" alice
+Changed UID by:
+usermod -u 2009 alice
+
+useradd -c "machine2" bob
+usermod -u 2013 bob 
+
+
+2.  Installing software
+===============================================================================
+
+Using yum (8) install unfs3, samba, portmap, nfs-utils and
+samba-client if they are not already installed.
+
+Answer: Samba (including samba-client), NFS (including unfs3 and nfs-utils) and 
+portmap were already installed.
+  
+
+3.  Configuring and testing nfs
+===============================================================================
+
+NFS is an acronym for "network filesystem". NFS is implemented for
+nearly all unix variations and even for windows.
+
+Export /home via exports (see "man exports"). Reload nfs daemon. Mount
+lab1:/home to lab2:/home. You can change user with su, f.e. "su -
+testuser1". Now both computers have same home folders.
+
+
+              ---------------------------
+Before we go into the questions, it should be noted that,
+I have created four users to work with
+
+alice (uid = 2009),
+bob (uid = 2013),
+eve (uid = 2011),
+and malory (uid = 2012).
+
+
+Questions:
+==========
+
+3.1 What are the problems with NFSv3 'default' installations and
+    firewalls? Use (trusted) internet sources AND tell what sources
+    you used.
+
+Answer:
+
+If I give the command: rpcinfo -p
+the output looks like:
+ 
+    program vers proto   port
+    100000    2   tcp    111  portmapper
+    100000    2   udp    111  portmapper
+    100024    1   udp    847  status
+    100024    1   tcp    850  status
+    100011    1   udp    727  rquotad
+    100011    2   udp    727  rquotad
+    100011    1   tcp    730  rquotad
+    100011    2   tcp    730  rquotad
+    100003    2   udp   2049  nfs
+    100003    3   udp   2049  nfs
+    100003    4   udp   2049  nfs
+    100021    1   udp  60073  nlockmgr
+    100021    3   udp  60073  nlockmgr
+    100021    4   udp  60073  nlockmgr
+    100003    2   tcp   2049  nfs
+    100003    3   tcp   2049  nfs
+    100003    4   tcp   2049  nfs
+    100021    1   tcp  40292  nlockmgr
+    100021    3   tcp  40292  nlockmgr
+    100021    4   tcp  40292  nlockmgr
+    100005    1   udp    741  mountd
+    100005    1   tcp    744  mountd
+    100005    2   udp    741  mountd
+    100005    2   tcp    744  mountd
+    100005    3   udp    741  mountd
+    100005    3   tcp    744  mountd
+ 
+This table shows the problem. Though nfs and portmap have statically assigned well-known ports namely 2049 and 111
+respectively. But the others like mountd, rquotad and status are allocated ports dynamically aasigned by portmapper. 
+This causes problem for the firewall setup.  
+
+One way to get around this problem is to give ports used by these services fixed values. This can be achieved by 
+editing files associated with specific daemons (e.g. /etc/init.d/nfslock is for nfslock). 
+
+The sources are:
+http://forums.gentoo.org/viewtopic-t-77748.html
+http://www.lowth.com/LinWiz/nfs_help.html
+
+
+3.2 What are the security problems with NFSv3 so-called
+    authentication? Are there any alternatives for securing NFSv3?
+    (hint: kerberos and NFS)
+
+Answer:
+
+logged in as user alice in virtual machine 2 by: 
+ssh alice@farm1.niksula.hut.fi -p 10192
+
+cd /home/bob
+-bash: cd: /home/bob: Permission denied
+ls -ld /home/bob
+drwx------ 2 bob 2010 4096 Oct 19 12:55 /home/bob
+[alice@localhost ~]$ su
+Password: 
+[root@localhost alice]# su bob
+[bob@localhost alice]$ cd /home/bob/
+[bob@localhost ~]$ 
+
+Here alice and bob are users in nfs client. User bob should be the only one to have access to his data. But Alice has 
+knowledge of the super user password. Hence at first she becomes super user and then becomes bob. This enables
+her to access bob's data. It is a problem scenario. This happens because the NFS server is accepting user id and group id
+as credentials. So when alice gives the command "su bob" (after becoming "su") she 
+gets access to bob's user and group id from NFS client's kernel.
+
+Hiding super-user password can help in such situation. A much better approach is using Kerberos V5 
+authentication within the NFS traffic. Now, even if alice does "su bob", unless she knows 
+bob's Kerberos password, she can never become user bob over the NFS connection.
+
+3.3 Explain shortly booting a diskless linux from network (via tftp
+    and nfs) [Edited]
+
+    [Comment: Comepletely re-written.]	
+
+Answer:
+
+Diskless booting is a way to boot a computer entirely from the network without having any storage on the client computer. 
+For this the client computer must have a network adapter that is PXE capable. The softwares required for this are: DHCP server, 
+TFTP server and NFS. DHCP is used to pass initial configuration information to the client. TFTP on the other hand, allows the 
+client to request a file one block at a time.
+
+In this booting process, at first the PXE client boots up and starts up PXE boot ROM. This PXE boot ROM then sends a DHCP/bootp 
+query to obtain some PXE-specific information such as the PXE version in use. Having obtained these information it initializes the 
+network card, and then uses TFTP to download the boot file in a block by block manner.
+
+The first file retrieved over the network is generally a boot loader. This boot loader will in turn load a configuration file over the network. 
+Typically after that, the boot loader will use TFTP to download a kernel image. Once the kernel has been retrieved and uncompressed; 
+control will be transferred to it and the booting process will continue.
+
+When the kernel gets control it mounts the root file system over the network using NFS. The kernel performs a DHCP/bootp request 
+to get its IP address and the location to mount. It then performs a NFS mount of the root file system from that location. Once mounted 
+it transfers control to the init process on the NFS-mounted root file system to continue booting. From here the boot process is basically 
+the same as that of a machine booting from a hard drive. 
+
+
+Source: http://pxe.dev.aboveaverageurl.com/index.php/PXE_Booting
+	http://www.naos.co.nz/papers/diskless/index1.html	
+
+
+
+
+3.4 Is it possible to encrypt all NFS traffic? How? Without (quite
+    heavy) full VPN? How about SSH (without TUN VPN)?
+
+Answer:
+
+Yes, it is possible to perform encryption over NFS traffic using SSH (on client & server). We use
+SSH tunneling between NFS client and server and hence traffic becomes encrypted. The idea is to mount 
+NFS directories in client machines through SSH. 
+
+Assuming both server and client systems have installed and running NFS, SSH services; we first go to
+the NFS server to export a NFS directory to itself. Now my server's IP address is 10.0.19.1 and we want
+to export /home; so we add the following line to /etc/exports:
+
+		/home 10.0.19.1(rw,root_squash) 
+
+The reason behind this is that, we want the NFS data to go through SSHD which is running in 10.0.19.1. Now the
+NFS data will forwarded to client through this SSH tunnel. I am giving read and write permission (it can
+also be made read only [ro] if required) and turning on root_squashing ensures that requests from the root user
+on a client machine are denied root access to root-owned files on the server machine.  
+  
+All done ( :D ). Just restart NFS and SSH daemons.
+
+Now we start configuring the client machine.
+
+First I found out the different ports and respective daemons running in the NFS server from client machine by:
+rpcinfo -p 10.0.19.1
+Output---->
+
+   program vers proto   port
+    100000    2   tcp    111  portmapper
+    100000    2   udp    111  portmapper
+    100024    1   udp    847  status
+    100024    1   tcp    850  status
+    100011    1   udp    601  rquotad
+    100011    2   udp    601  rquotad
+    100011    1   tcp    604  rquotad
+    100011    2   tcp    604  rquotad
+    100003    2   udp   2049  nfs
+    100003    3   udp   2049  nfs
+    100003    4   udp   2049  nfs
+    100021    1   udp  54191  nlockmgr
+    100021    3   udp  54191  nlockmgr
+    100021    4   udp  54191  nlockmgr
+    100003    2   tcp   2049  nfs
+    100003    3   tcp   2049  nfs
+    100003    4   tcp   2049  nfs
+    100021    1   tcp  42612  nlockmgr
+    100021    3   tcp  42612  nlockmgr
+    100021    4   tcp  42612  nlockmgr
+    100005    1   udp    615  mountd
+    100005    1   tcp    618  mountd
+    100005    2   udp    615  mountd
+    100005    2   tcp    618  mountd
+    100005    3   udp    615  mountd
+    100005    3   tcp    618  mountd
+
+Note that, NFS has a port number of 2049 and mountd's is 618 (tcp). I will bind a SSH port 
+(16980, this is my birthday.. :D) with the NFS port (2049) with the following command:
+
+ssh -f -c blowfish -L 16980:10.0.19.1:2049 -l alice 10.0.19.1 
+     
+[Note: in both cases blowfish is the encryption utility. "-L 16980:10.0.19.1:2049" means, binding 
+the SSH client at port 16980 with the NFS server @ 10.0.19.1 on port 2049 for communication.]
+
+I then bind another SSH port (14342, this time my father's birthday... :D) with mountd port (618).
+
+ssh -f -c blowfish -L 14342:10.0.19.1:618 -l alice 10.0.19.1 
+
+Now I mount a NFS directory /home through two SSH ports 16980 and 14342 in a local directory 
+in the NFS client computer called /mnt/testAnis by:
+
+mount -t nfs -o tcp,port=16980 ,mountport=14342 localhost:/home /mnt/testAnis
+
+Source: http://www.linuxsecurity.com/content/view/117705/49/
+
+3.5 What happens if testuser1 UID is 1001 in lab1, 1002 in lab2 and
+    testuser2 is 1002 in lab1, 1001 in lab2? Try or think (and check
+    from documentation).
+
+Answer: 
+   let testuser1 be eve and testuser2 be malory.
+   
+   Now eve has uid 1001 in lab1 and 1002 in lab2. Though it is the same user name
+   in both machines, they are effectively different users; because of the different
+   uid s. 
+
+   Same goes for malory. malory has uid 1002 in lab1 and 1001 in lab2. They are effectively
+   different users.
+
+   Now if we want eve (or malory) to be the same user in the whole system (NFS server and client)
+   then we must ensure that eve has the same uid in the whole system (one can use usermod -u for this). 
+   Also if eve has different uid in lab1 and lab2 then sharing will be denied by nfs. Because 
+   it can't figure out if they are the same users or not.	
+   
+
+
+4.  Configuring and testing samba
+===============================================================================
+
+Samba is a unix/linux implementation for normal Windows network shares
+(netbios and CIFS (common internet filesystem)). You can configure
+samba via /etc/samba/smb.conf. You can access samba with command
+smbclient or by mounting via mount.
+
+Share /home with read and write permissions (/home shares are already
+set in smb.conf but need a little bit of tweaking) and set up and
+start samba. Try to mount //lab1/homes to lab2:/mnt/testuser1 with
+username testuser1 and testuser1's password. You have to run smbpasswd
+with the correct parameters on lab1 first. Check that necessary
+services and ports are open.
+
+
+Questions
+=========
+
+4.1 Only root can use mount. What is the problem with home folders? Can this be
+    overridden?
+
+Answer:
+
+By default only a root user may mount SMB shares on the command line. Because the 
+'mount' programs is setuid (means users with only superuser priviledges can run this).
+
+A good way to get around this problem is by setting the suid sticky bit of 
+mount.cifs (umount.cifs for unmounting) (must be done by root) e.g.:
+   chmod 4755 /sbin/mount.cifs
+   chmod 4755 /sbin/umount.cifs	
+   
+[Note: Now if you execute the command: ls -l /sbin/ | grep mount*, you will see a 's' 
+ added for suid bit for these two files.]
+
+The above works; because lets say, alice (uid = 2009, gid = 2009) logs in and executes the mount.cifs program (or script). 
+Now as the suid for this script is set, it will create a child shell process and in turn will execute the process with 
+uid and gid of 0 (root). alice cannot excute any script whose suid is not set.    
+
+
+4.2 When and why may samba be a good choice (hint: interoperability
+    with one specific operating system)?
+
+We know that, we can use NFS to share files between Linux machines. But if a network contains both Windows and Linux 
+machines, then use Samba. Samba allows files and printers to be shared by all the systems in a network.
+
+
+5.  Configuring and testing sshfs
+===============================================================================
+
+sshfs is Secure Shell Filesystem for FUSE (Filesystem in Userspace).
+
+Since the virtual machines have quite little space, we need to make
+some room. First umount the samba share on lab2. Then uninstall samba
+by "yum remove samba".
+
+Now lets update the kernel and install required files:
+
+input: yum update kernel-xen
+input: yum install kernel-xen-devel
+input: yum install dkms dkms-fuse
+
+Lets reboot with the new kernel:
+
+input: shutdown -r now (!!!! THIS WILL HANG THINGS !!!!)
+
+You have to wait for a minute or two while the machine boots up
+again. Log back in to the machine after a while. (The connection will
+refuse until the machine is ready)
+
+Check that that fuse is installed with:
+
+input: modprobe fuse
+
+It should return you straigth to the prompt. Otherwise see
+troubleshooting below.
+
+Now mount lab1:/home/testuser1 to lab2:/mnt/testuser1 using sshfs.
+
+Include the commands and outputs in your report that show that the
+mount works.
+==================================================================
+Due to technical difficulties, I could not use lab1 and lab2 
+machines for this question (as u might understand from my repeated emails). 
+Instead, my remote machine is virtual machine 3, where there is a user 
+called alice whose home directory is mounted in the /mnt/testSSH of 
+virtual machine 1.
+
+
+[root@localhost ~]# sshfs alice@10.0.19.3:/home/alice/ /mnt/testSSH
+The authenticity of host '10.0.19.3 (10.0.19.3)' can't be established.
+RSA key fingerprint is 22:f1:7c:f8:c2:4d:4f:01:75:58:76:4f:c3:a9:2d:41.
+Are you sure you want to continue connecting (yes/no)? yes
+alice@10.0.19.3's password: 
+[root@localhost ~]# ls -l /mnt/testSSH
+total 4
+-rw-r--r-- 1 root root 21 Oct 21 21:02 mySorrow.txt
+
+
+Then I tested to log into 10.0.19.3 as root and mount the /home into 
+/mnt/anotherTest of virtual machine 1.
+
+[root@localhost ~]# mkdir /mnt/anotherTest
+[root@localhost ~]# sshfs root@10.0.19.3:/home/ /mnt/anotherTest
+root@10.0.19.3's password: 
+[root@localhost ~]# ls -l /mnt/anotherTest/
+total 4
+drwx------ 1 alice alice 4096 Oct 21 21:02 alice
+
+
+===================================================================
+5.1 When is sshfs a good solution?
+
+SSHFS should be used to access files over insecure networks as it
+provides sucure mounting of a remote filesystem into a local filesystem 
+in the userspace. It provides more security than NFS and Samba, 
+by being more restrictive in scope; i.e. in order to get access 
+a user needs to have an account and a password on the server. 
+
+5.2 What are the advantages of FUSE?
+
+The biggest benefit is that, FUSE enables normal users to build their own file
+systems in userspace without having special privileges or without having to modify 
+OS’s kernel source code.
+
+
+5.3 Why doesn't everyone use encrypted channels for all network filesystems?
+
+Not all communication needs to be encrypetd. Information may also be made
+public (might have digital signature with it to ensure integrity and authenticity).
+Also a bad side of using encrypted channel (e.g. sshfs tunneling) is that,
+things might become heavy weight and hence slow down. 
+
+Thats why if it is not required to hide data, then encrypted channels should
+not be used. 
+
+=================================================================================
+Troubleshooting:
+
+If you get "FATAL: Module fuse not found." when trying "modprobe
+fuse", check that you have the same version of kernel-xen and
+kernel-xen-devel (yum list kernel*) and follow the instructions from
+the beginning.
+
+You can make more room by removing other kernel versions than the one
+in use (uname(1)).
+
+e.g. input: yum remove kernel-xen-2.6.18-128.7.1.el5
+
+
+
+
+6.  Final questions and reporting
+===============================================================================
+
+You are required to include the typed commands and their outputs. See
+general instructions.
+
+6.1 Describe briefly a few use cases for samba, nfs and sshfs. Where,
+    why, weaknesses?
+
+Answer:
+
+Samba:
+Apart from the obvious file (one can even mount Linux file system in windows machine!) 
+and printer sharing between Windows and Linux systems; Samba is useful when updating web site 
+content remotely. If the webserver is running Apache and Linux, then a good idea would be 
+to use Samba for updating instead of ftp.    
+
+Weaknesses:
+A potential security risk is that, if the mount.cifs program is run with -v (or verbose) option, 
+then the value of the password may get printed. 
+
+Secunia Research has also found a security problem in Samba caused by a boundary error within the 
+'receive_smb_raw()' function. Using this flaw, an attacker can trick a user into connecting to a 
+malicious server.
+
+NFS:
+
+Using NFS, commonly used data can be stored in a single machine and still remain
+available for the whole network. Also the need to have separate home directories
+for users is eliminated. Storage devices like DVD drives can be shared and hence
+reducing hardware costs.
+
+Weaknesses:
+
+When a NFS client sends a request to a NFS server, it specifies file identifier, type 
+of operation (read/write/edit etc.) and the user's identity by uid and gid. Now as 
+the NFS server authenticates a user based on this, anyone can use a program (e.g. 
+nfsshell) to generate a random NFS request and may be able to mount a file system. 
+ 
+SSHFS:
+
+sshfs is used to mount a directory from a remote SSH server and use it as a normal 
+directory. sshfs provides an encrypted tunnel between the local and remote computers, 
+hence giving increased security.
+
+Weaknesses:
+
+There is considerable latency in executing commands due to the heavy weight of encryption.
+If a user is in a terminal whose p.w.d is within the remotely mounted 
+directory then all the command execution will slowdown.
+
+
+6.2 There are many other alternatives. Choose a couple of them and
+compare them with the previous.
+
+AFS:
+The Andrew File System (AFS) is a distributed networked file system which uses a set of 
+trusted servers to present a location-transparent file space for all clients. AFS has 
+security advantages over traditional networked file systems; because it uses Kerberos for 
+authentication and implements ACLs on directories for users and groups. 
+
+A downside is that,it uses file locking and for this AFS cannot support large shared databases 
+or record updates within files that are shared between client systems.
+
+Coda:
+Coda is a network file system developed as a research project at Carnegie Mellon University. It
+was originally developed in Linux.
+
+Coda was developed at a time when network connections were sometimes unstable,.Thats why
+it uses a local cache to provide access to server data in cse of lost network connection. 
+During normal operation, if a client marks a data to be important and after a while the 
+client is disconnected from the network; then client's local cache serves the data from its 
+cache and logs all updates. 
+
+GlusterFS:
+GlusterFS is a distributed file system designed for large storage. It has a 
+client and server component that are loosely coupled. Server side is kept simple; it exports an 
+existing file system as it is and depends on the client-side to structure the stored data. 
+The client systems are stateless and do not coomunicate with each other. This lack of communication 
+can cause consistancy problems.
+
+Upside to this file system is that, due to the loose coupling, GlusterFS can handle petabytes of data.
+
+
+7.  Finishing your work
+===============================================================================
+
+When finishing your work copy your related files from the lab
+computers to a safe place (e.g. your home directory in Niksula or the
+Computer Center). Copy your report to /home/answers on Lab machine 1
+and make sure it is accessible there at assignment deadline.
+
+
+
+

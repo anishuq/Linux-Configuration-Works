@@ -1,0 +1,305 @@
+IPV6
+====
+
+Fill in!
+
+Name: A. M. Anisul Huq
+Student number: 82372J
+
+In this exercise you will collect knowledge about Internet Protocol
+version 6 (IPv6). The main task is to build a small internal network.
+===============================================================================
+
+Material:
+
+    * RFC 2373 - IP version 6 Addressing Architecture
+    * RFC 2375 - IPv6 Multicast Address Assignment
+    * RFC 2460 - Internet Protocol, Version 6 (IPv6) Specification
+    * RFC 2461 - Neighbor Discovery for IP version 6 (IPv6)
+    * IPv6 HOWTO - Very much information about IPv6 and Linux
+    * ifconfig manual page
+    * route manual page
+    * tcpdump manual page
+    * Wireshark homepage
+    * scp manual page
+
+Preparation:
+
+Please familiarize yourself with the network topology before you start
+doing this assignment.
+
+  <Network topology picture>
+
+  	  --Router--
+         /    |     \             
+      eth1   eth0   eth2                    
+       /      |       \          
+      /       |        \
+     /        |         \         
+    /         |          \
+  eth1        |          eth1
+  /           |            \    
+Node1         |           Node2
+  |           |            |
+ eth0         |           eth0
+  |           |            |
+  |_______INTERNET_________|
+
+When you feel ready to start the actual assignment, check that the
+radvd daemon is not running. (ps aux | grep ravdv) A prefix length for
+IPv6 addresses used in this exercise is 64. A netmask for IPv4
+addresses used in this exercise is 255.255.255.0.
+
+Work tasks:
+
+1. Build a small network.
+===============================================================================
+
+Configure your network as described.
+
+The Virtual Machines (VM) are connected according to the network
+topology shown above. Each line represents a crossover connection to
+another machine. You must use machine 1 as the Router and machines 2
+and 3 as Nodes.
+
+Check, that all VMs used in this exercise contain the following
+addresses in their "/etc/hosts" file. If the addresses are missing,
+you will need to add them.
+
+          /etc/hosts
+
+          ::1 localhost
+          3ffe:300:10:3::2 Node1
+          3ffe:300:10:4::2 Node2
+          3ffe:300:10:3::1 Router Router-0
+          3ffe:300:10:4::1 Router-1
+
+Set one VM (machine 1) to act as a router. Use the following sysctl
+commands:
+
+          ~> sysctl -w net.ipv6.conf.default.forwarding=1
+          ~> sysctl -w net.ipv6.conf.all.forwarding=1
+
+Run all interfaces of the Router up and add static addresses to each
+interface.  Add necessary host routes.
+
+For other nodes named as Node1 and Node2: Run interfaces up and add
+static addresses for interfaces. Add necessary default routes.
+
+Questions:
+==========
+
+1.1 List all commands that you used to add static addresses to the
+    router and all the nodes and interfaces. Explain one of the add
+    address commands, including the address. [2p.]
+
+
+    For router (VM 1):
+
+    ifconfig eth1 up
+    ifconfig eth1 inet6 add 3ffe:300:10:3::1/64
+
+
+    ifconfig eth2 up
+    ifconfig eth2 inet6 add 3ffe:300:10:4::1/64
+
+
+    For node 1 (or VM 2)
+
+    ifconfig eth1 up
+    ifconfig eth1 inet6 add 3ffe:300:10:3::2/64
+
+
+    For node 2 (or VM 3) 
+
+
+    ifconfig eth1 up
+    ifconfig eth1 inet6 add 3ffe:300:10:4::2/64	
+
+    Explanation:
+
+
+
+1.2 List the command that you used to add the default route on Node 1,
+    and explain it. [2p.]
+
+    In node 1 (or VM 2): 
+    route -A inet6 add default gw 3ffe:300:10:3::1 dev eth1
+
+
+    In node 2 (or VM 3): 
+    route -A inet6 add default gw 3ffe:300:10:4::1 dev eth1	
+
+    Explanation:
+	
+
+
+1.3 List interface information from Node 1, as well as the IPv6
+    routing table.  Explain the IPv6 information from the interface
+    and the routing table.  [5p.]
+	
+    
+    All in node 1.
+
+[root@localhost ~]# ip -6 addr show dev eth1
+3: eth1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qlen 1000
+    inet6 3ffe:300:10:3::2/64 scope global 
+       valid_lft forever preferred_lft forever
+    inet6 fe80::216:3eff:fe5a:2cbf/64 scope link 
+       valid_lft forever preferred_lft forever
+
+Explanation:
+
+
+[root@localhost ~]# route -A inet6
+Kernel IPv6 routing table
+Destination                                 Next Hop                                Flags Metric Ref    Use Iface
+3ffe:300:10:3::/64                          *                                       UA    256    718       0 eth0    
+3ffe:300:10:3::/64                          *                                       U     256    1        0 eth1    
+fe80::/64                                   *                                       U     256    0        0 eth0    
+fe80::/64                                   *                                       U     256    0        0 eth1    
+*/0                                         Router                                  UG    1      0        0 eth1    
+*/0                                         fe80::216:3eff:fe76:f656                UGDA  1024   1        0 eth0    
+localhost6.localdomain6/128                 *                                       U     0      4        1 lo      
+Node1/128                                   *                                       U     0      0        1 lo      
+3ffe:300:10:3:216:3eff:fe07:c90b/128        *                                       U     0      0        1 lo      
+fe80::216:3eff:fe07:c90b/128                *                                       U     0      0        1 lo      
+fe80::216:3eff:fe5a:2cbf/128                *                                       U     0      0        1 lo      
+ff02::1/128                                 ff02::1                                 UC    0      1        0 eth0    
+ff00::/8                                    *                                       U     256    0        0 eth0    
+ff00::/8                                    *                                       U     256    0        0 eth1    
+
+Explanation:
+
+
+
+
+1.4 Start the tcpdump program on each machine. Ping the other nodes,
+    including the Router, from Node1. (Node1->Router, Node1->Node2)
+    You should get a return packet for each ping you have sent. If
+    not, recheck you network configuration. Include the headers of
+    successful ping return packets in your report. Include ping6
+    output as well as tcpdump output. [3p.]
+
+From node 1 to its eth1 of router:
+
+[root@localhost ~]# ping6 -Ieth1 3ffe:300:10:3::1
+PING 3ffe:300:10:3::1(3ffe:300:10:3::1) from 3ffe:300:10:3::2 eth1: 56 data bytes
+64 bytes from 3ffe:300:10:3::1: icmp_seq=0 ttl=64 time=0.550 ms
+64 bytes from 3ffe:300:10:3::1: icmp_seq=1 ttl=64 time=0.394 ms
+64 bytes from 3ffe:300:10:3::1: icmp_seq=2 ttl=64 time=0.394 ms
+64 bytes from 3ffe:300:10:3::1: icmp_seq=3 ttl=64 time=0.400 ms
+64 bytes from 3ffe:300:10:3::1: icmp_seq=4 ttl=64 time=0.391 ms
+64 bytes from 3ffe:300:10:3::1: icmp_seq=5 ttl=64 time=0.325 ms
+64 bytes from 3ffe:300:10:3::1: icmp_seq=6 ttl=64 time=0.345 ms
+64 bytes from 3ffe:300:10:3::1: icmp_seq=7 ttl=64 time=0.361 ms
+
+--- 3ffe:300:10:3::1 ping statistics ---
+8 packets transmitted, 8 received, 0% packet loss, time 7011ms
+rtt min/avg/max/mdev = 0.325/0.395/0.550/0.063 ms, pipe 2
+
+
+From node 1 to its eth2 of router:
+[root@localhost ~]# ping6 -Ieth1 3ffe:300:10:4::1
+PING 3ffe:300:10:4::1(3ffe:300:10:4::1) from 3ffe:300:10:3::2 eth1: 56 data bytes
+64 bytes from 3ffe:300:10:4::1: icmp_seq=0 ttl=64 time=0.495 ms
+64 bytes from 3ffe:300:10:4::1: icmp_seq=1 ttl=64 time=0.316 ms
+64 bytes from 3ffe:300:10:4::1: icmp_seq=2 ttl=64 time=0.272 ms
+64 bytes from 3ffe:300:10:4::1: icmp_seq=3 ttl=64 time=0.312 ms
+64 bytes from 3ffe:300:10:4::1: icmp_seq=4 ttl=64 time=0.287 ms
+
+--- 3ffe:300:10:4::1 ping statistics ---
+5 packets transmitted, 5 received, 0% packet loss, time 4009ms
+rtt min/avg/max/mdev = 0.272/0.336/0.495/0.082 ms, pipe 2
+
+
+
+
+
+
+2. Rebuild your network
+======================================================================
+
+Router:
+-------
+
+Study the content of radvd.conf file.
+
+Modify the content of ravd.conf file to be used in Your network. Start
+the router advertisement daemon (radvd). Note: Verify with the 'ps'
+-command, that radvd started up properly. If radvd refuses to start up
+(process exits with non-zero value) then the error can be e.g. a typo
+in the radvd.conf file.
+
+Check that router advertisement packets are sent to each interface
+periodically.
+
+
+
+Node1, Node2:
+-------------
+
+Remove all static addresses from the interfaces and run the interfaces
+down.
+
+Run interfaces on Node2 up.
+
+Start the tshark application on Node1. Capture all packets. Run the
+interface up.  Stop capturing the packets after five seconds.
+
+Ping the other node from Node1 (Node1->Node2). You should get a return
+packet for each ping you have sent. If not, recheck your network
+configuration.
+
+Questions:
+==========
+
+2.1 Explain your modifications to radvd.conf. [3p.]
+
+interface eth1
+{
+        AdvSendAdvert on;
+        prefix 3ffe:300:10:3::/64               
+        {
+                AdvOnLink on;
+                AdvAutonomous on;
+        };
+};
+
+interface eth2
+{
+        AdvSendAdvert on;
+        prefix 3ffe:300:10:4::/64
+        {
+                AdvOnLink on;
+                AdvAutonomous on;
+        };
+};
+
+
+Checking to see if radvd.conf is running:
+
+[root@localhost ~]# service radvd start
+Starting radvd:                                            [  OK  ]
+
+[root@localhost ~]# ps aux | grep radvd
+radvd     7431  0.0  0.1   5920   376 ?        Ss   00:57   0:00 radvd -u radvd
+
+
+
+
+2.2 Explain one address removal command. [2p.]
+
+ifconfig eth1 inet6 del 3ffe:300:10:3::2/64
+
+Explanation:
+
+
+
+2.3 Analyse captured packets and explain what happens, when you set up
+    the interface. [5p.]
+
+
+
+2.4 Include the ping commands and their outputs in your report. Use ip
+    addresses for pinging. [2p.]

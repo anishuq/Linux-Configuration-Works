@@ -1,0 +1,359 @@
+Crypto-filesystem Assignment 2009
+=================================
+
+Fill in!
+
+Name: A. M. Anisul Huq	
+Student number: 82372J
+
+==============================================================================
+				Notice:
+
+Crypto:
+2.1 No source stated. The anwser is not clearly to the point. -1p
+
+3.2 One big problem of EncFS is missing that it leave meta-data of a filesystem 
+in plain text. No source stated. -1p
+
+So changes were made to 2.1 and 3.1.
+
+===============================================================================
+
+In this assignment you will create an encrypted filesystem on a file
+(on a real machine a device such as a floppy disk or usb memory stick
+can be used). Two different schemes will be used: encrypted loopback
+device with cryptoloop, and encryption layer for an existing
+filesystem with encFS.  Material
+
+    * Loopback Encrypted Filesystem HOWTO
+    * Cryptoloop HOWTO
+    * Encfs manual page
+
+
+
+1. Preparation
+--------------
+
+Check that you have cryptoloop and aes kernel modules loaded on a
+host.
+
+lsmod (8), modprobe (8)
+
+
+2.Cryptoloop with AES
+---------------------
+
+Create a file with random bytes to make it harder for the attacker to
+recognize which parts of device are used to store data, and which are
+left empty. This can be done with the command:
+
+    dd if=/dev/urandom of=loop.img bs=1k count=1k 
+
+Create an encrypted loopback device using losetup(8).
+
+Create a filesystem on the loopback device, created in the previous
+step. Linux's default filesystem (ext2) can be created with mke2fs(8)
+
+Unassign the loopback device with losetup. After this, you have
+successfully created an encrypted filesystem. The filesystem is ready,
+and requires a passphrase to be entered when mounting it.
+
+Mount the filesystem using mount(8). You'll have to use the encryption
+option of mount, and describe the correct encryption algorithm.
+
+Create some files and directories on the encrypted filesystem - and
+test, that you can remount it with the correct key. Check what happens
+with a wrong key.
+
+
+Question set 1:
+---------------
+
+2.1 Explain what an encrypted loopback device is. [3p]	[Edited]
+
+
+[Comment: The 1st paragraph is moderately edited, the 2nd paragraph is
+ newly added. Source is also given.]
+
+Answer:
+
+"Loopback" is a pseudo-device that allows a user to mount a normal file like a device (device such as 
+/dev/sda1). In other words, the loopback device does not point to a separate drive; it points to a file.
+While the user is mounting this file, he can encrypt it and hence the name encrypted loopback device. 
+In order to create and mount an encrypted loopback device, we at first have to make a file that is as 
+large as the filesystem itself. This file will contain the filesystem. By using loopback utility 
+(from the util-linux package), we can then mount this file as an independant device and start using it. 
+One can store individual files in it. Once unmounted (using "umount") and detached (using "losetup -d") 
+from the loopback device (after required usage), this file cannot be mounted again without the correct 
+password the user had given it while encrypting. 
+
+[All the commands are given in answer 2.2]
+
+As stated earlier, the mounted file can be encrypted and different types of encryption such as XOR, DES, 
+twofish, blowfish, cast128, serpent, MARS, RC6, DFC, IDEA etc. can be used. The 'losetup' program is responsible 
+for associating the encrypted file with it's cipher type. However, DES and losetup are deemed to be
+incompitable due to their different ways of handling parity bits. An encrypted loopback device is 
+susceptible to watermarking attacks, as it is possible to detect the presence of such a specially created 
+file in the file system. Also programs such as file managers tend to cache information making it a little insecure.
+
+
+Source: http://librenix.com/?inode=5367
+	http://www.faqs.org/docs/Linux-HOWTO/Loopback-Encrypted-Filesystem-HOWTO.html
+	http://h3g3m0n.wordpress.com/2007/04/16/quick-simple-encrypted-loopback-filesystem/
+	http://en.wikipedia.org/wiki/Cryptoloop
+	http://www.csulb.edu/~pnguye11/loopbackDev.html
+
+
+2.2 Provide the commands you used. [2p]
+
+Answer:
+
+First I setup the target file. The dd command takes /dev/urandom as the input file.
+loop.img is the output file. Block size is 1KB and there will be 1024 blocks, each 
+1KB in size (so total = 1MB). 
+
+[root@lab1 ~]# dd if=/dev/urandom of=loop.img bs=1k count=1k 
+1024+0 records in
+1024+0 records out
+1048576 bytes (1.0 MB) copied, 0.165897 seconds, 6.3 MB/s
+
+Second, using the losetup program I bind loop.img with the loopback device:
+
+[root@lab1 ~]# losetup -e aes /dev/loop0 loop.img 
+Password:
+
+
+Third, I make a file system on the loopback device with "mke2fs" command. 
+"-m 0" means that I do not want to reserve space for root.
+
+[root@lab1 ~]# mke2fs -m 0 /dev/loop0
+mke2fs 1.39 (29-May-2006)
+Filesystem label=
+OS type: Linux
+Block size=1024 (log=0)
+Fragment size=1024 (log=0)
+128 inodes, 1024 blocks
+0 blocks (0.00%) reserved for the super user
+First data block=1
+Maximum filesystem blocks=1048576
+1 block group
+8192 blocks per group, 8192 fragments per group
+128 inodes per group
+
+Writing inode tables: done                            
+Writing superblocks and filesystem accounting information: done
+
+This filesystem will be automatically checked every 33 mounts or
+180 days, whichever comes first.  Use tune2fs -c or -i to override.
+
+
+Fourth, I mount it:
+[root@lab1 ~]# mount /dev/loop0 /mnt/mountEverest
+[root@lab1 ~]# ls -l /mnt/mountEverest
+total 12
+drwx------ 2 root root 12288 Nov 22 14:45 lost+found
+
+[root@lab1 ~]# nano /mnt/mountEverest/test.txt
+
+[root@lab1 ~]# cat  /mnt/mountEverest/test.txt
+We few, we happy few, we band of brothers;
+For he to-day that sheds his blood with me
+Shall be my brother;
+
+[root@lab1 ~]# umount /mnt/mountEverest
+[root@lab1 ~]# losetup -d /dev/loop0
+[root@lab1 ~]# ls -l /mnt/mountEverest
+total 0
+
+------------------------------------------------
+Testing with the wrong password:
+[root@lab1 ~]# losetup -e aes /dev/loop0 loop.img 
+Password: 
+[root@lab1 ~]# mount /dev/loop0 /mnt/mountEverest
+mount: you must specify the filesystem type
+
+------------------------------------------------
+
+[root@lab1 ~]# losetup -d /dev/loop0
+
+-------------------------------------------------
+Now trying with the correct password:
+[root@lab1 ~]# losetup -e aes /dev/loop0 loop.img
+Password: 
+[root@lab1 ~]# mount /dev/loop0 /mnt/mountEverest
+[root@lab1 ~]# ls -l /mnt/mountEverest
+total 13
+drwx------ 2 root root 12288 Nov 22 14:45 lost+found
+-rw-r--r-- 1 root root   107 Nov 22 15:24 test.txt
+
+[root@lab1 ~]# cat /mnt/mountEverest/test.txt 
+We few, we happy few, we band of brothers;
+For he to-day that sheds his blood with me
+Shall be my brother;
+-------------------------------------------------
+
+
+3. encFS
+--------
+
+Since the virtual machines have quite little disk space, we need to
+make some room. First umount samba shares. Then uninstall samba by
+"yum remove samba*".
+
+Now lets update the kernel and install required files:
+
+  yum update kernel-xen
+  yum install kernel-xen-devel
+  yum install dkms dkms-fuse
+
+Lets reboot with the new kernel:
+
+  shutdown -r now
+
+You have to wait for a minute or two while the machine boots up
+again. Log back in to the machine after a while. (The connection will
+refuse until the machine is ready)
+
+Check that that fuse is installed with:
+
+  modprobe fuse
+
+Using encFS, mount an encrypted filesystem on a directory of your
+choice. This gives us the encryption layer.
+
+After this, create a few directories, and some files in them. Unmount
+encFS using Fuses fusermount.
+
+Check what was written on the file system.
+
+
+Question set 2:
+---------------
+
+3.1 Provide the commands you used. [2p]
+
+Answer:
+
+[root@localhost ~]# usermod -a -G fuse root
+[root@localhost ~]# encfs /home/talesFromTheCrypt /home/talesFromTheDecrypt
+The directory "/home/talesFromTheCrypt/" does not exist. Should it be created? (y,n) y
+The directory "/home/talesFromTheDecrypt" does not exist. Should it be created? (y,n) y
+Creating new encrypted volume.
+Please choose from one of the following options:
+ enter "x" for expert configuration mode,
+ enter "p" for pre-configured paranoia mode,
+ anything else, or an empty line will select standard mode.
+?> p
+
+Paranoia configuration selected.
+
+Configuration finished.  The filesystem to be created has
+the following properties:
+Filesystem cipher: "ssl/aes", version 2:1:1
+Filename encoding: "nameio/block", version 3:0:1
+Key Size: 256 bits
+Block Size: 512 bytes, including 8 byte MAC header
+Each file contains 8 byte header with unique IV data.
+Filenames encoded using IV chaining mode.
+File data IV is chained to filename IV.
+
+-------------------------- WARNING --------------------------
+The external initialization-vector chaining option has been
+enabled.  This option disables the use of hard links on the
+filesystem. Without hard links, some programs may not work.
+The programs 'mutt' and 'procmail' are known to fail.  For
+more information, please see the encfs mailing list.
+If you would like to choose another configuration setting,
+please press CTRL-C now to abort and start over.
+
+Now you will need to enter a password for your filesystem.
+You will need to remember this password, as there is absolutely
+no recovery mechanism.  However, the password can be changed
+later using encfsctl.
+
+New Encfs Password: 
+Verify Encfs Password: 
+
+[root@localhost ~]# mkdir /home/talesFromTheDecrypt/kings
+[root@localhost ~]# nano /home/talesFromTheDecrypt/kings/henry.txt
+[root@localhost ~]# nano /home/talesFromTheDecrypt/yeats.txt
+
+[root@localhost ~]# ls -la /home/talesFromTheDecrypt/
+total 20
+drwx------ 3 root root 4096 Nov 25 08:31 .
+drwxr-xr-x 4 root root 4096 Nov 25 08:28 ..
+drwxr-xr-x 2 root root 4096 Nov 25 08:31 kings
+-rw-r--r-- 1 root root  130 Nov 25 08:31 yeats.txt
+[root@localhost ~]# ls -la /home/talesFromTheCrypt/
+total 24
+drwx------ 3 root root 4096 Nov 25 08:31 .
+drwxr-xr-x 4 root root 4096 Nov 25 08:28 ..
+-rw-r----- 1 root root  239 Nov 25 08:27 .encfs5
+-rw-r--r-- 1 root root  146 Nov 25 08:31 FcSBjJJjqNeqAqYKq6I3grnI
+drwxr-xr-x 2 root root 4096 Nov 25 08:31 YN7QKAT-SqlqeNeIx6g1OAch
+
+
+[root@localhost ~]# fusermount -u /home/talesFromTheDecrypt
+
+
+[root@localhost ~]# ls -la /home/talesFromTheDecrypt/
+total 12
+drwx------ 2 root root 4096 Nov 25 08:27 .
+drwxr-xr-x 4 root root 4096 Nov 25 08:28 ..
+
+[root@localhost ~]# ls -la /home/talesFromTheCrypt/
+total 24
+drwx------ 3 root root 4096 Nov 25 08:31 .
+drwxr-xr-x 4 root root 4096 Nov 25 08:28 ..
+-rw-r----- 1 root root  239 Nov 25 08:27 .encfs5
+-rw-r--r-- 1 root root  146 Nov 25 08:31 FcSBjJJjqNeqAqYKq6I3grnI
+drwxr-xr-x 2 root root 4096 Nov 25 08:31 YN7QKAT-SqlqeNeIx6g1OAch
+
+
+3.2 Explain how this approach differs from the loopback one. Does this
+solve any problems or create more? [3p] [Edited]
+
+
+[Comment: The fourth and fifth paragraph has been re-written
+	  and source is added at the end.]
+
+
+Answer:
+
+encfs allows encrypted files size to grow or shrink without formatting the filesystem.
+With Loop-AES, the user must predefine the size of the filesystem (with the "dd" command). 
+This means that either space will be wasted due to unused space or the user might run
+out of space.
+
+encfs creates an encrypted filesystem in userspace and thus does not require the user
+to have any root access. Any user belonging to the "fuse" group can use it. But in case 
+of loop-AES, the user must have mount priveledges.
+
+encfs provides more security than loop-aes. Because in loop-aes, the user is asked to
+give a password. Most users tend to provide dictionary words or personal information as
+passwords. This enables attackers to launch dictionary attacks or if they can steal personal 
+data, that will also expose the encrypted files. On the other hand, encfs uses a volume key
+to encrypt the files. A user provided password is needed to decrypt this key. The command
+"encfsctl" command can be used to change the user password. Needless to say, this does not
+re-encrypt the all the files; it only re-encrypts the volume key. 
+
+One disadvantage would be that, encfs stores metadata about the encrypted filesystem in 
+plain text (the .encfs5 file seen above) making it visible to anyone with access to the encrypted 
+files. This file contains information such as number of files encrypted, file size, permissions 
+and when it was last modified (i.e. encfs does not encrypt or hide these informations).
+
+Another problem is that, the maximum filename length in ext2/3 is 255 bytes and 256 bytes
+for ext4. Encfs might inflates the filename and hence cross these boundaries. 
+(even if the unencrypted file name does not). In such a case, the file will not be stored
+and the OS will quit with ENAMETOOLONG. 
+
+
+
+Source: http://www.arg0.net/encfs
+	http://www.bitflop.com/document/76
+	http://osdir.com/ml/debian-bugs-dist/2009-07/msg03149.html
+
+
+
+
+

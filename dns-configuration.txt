@@ -1,0 +1,1216 @@
+DNS
+===
+
+Fill in!
+
+Name: A. M. Anisul Huq
+Student number: 82372J
+
+=============================================================================
+
+							Notice:
+
+"DNS:
+1.1 forward only will not allow the server to make a recursive query if the forwarders doesn't produce an answer -1p
+2.1 the significance of SOA and NS records for the master server was not explained. -1p
+3.1 missing explanation of the slave NS record in the master's zone configuration. 
+     Changes in zones are propagated to all the slave servers defined with NS records in the master zone file. -1p
+3.2 only master server was queried. -2p
+
+4.1 the roles of the name servers for the insec domain should have remained the same. -2p, 
+      missing NS record for the subdomain on the tld name server. -1p
+
+5.1 not.insec master: there should be only a key statement in the allow-transfer parameter. -1p, 
+incorrect unsuccessful TSIG authentication log entry. -1p,
+incorrect successful XFR TSIG authentication -1p.
+
+5.2 missing explanation of performance and security effects and how DNS records play important role in SIG(0). -1p"
+
+
+Hence changes are made to 1.1, 2.1, 3.1, 3.2, 4.1, 5.1 and 5.2.
+
+=============================================================================
+
+Note: Only use eth1 and eth2 interfaces for this assignment.
+
+Preparations:
+
+Assign static ip addresses to the eth1 interfaces on your assigned
+machines #1 and #2. Use addresses from the range 192.168.x.x/24 (we'll
+call this labnet).
+
+----------------------------------------------------------------------------------------------
+
+I assigned temporary static IP addresses by the following command:
+
+ifconfig eth1 192.168.1.3 netmask 255.255.255.0 broadcast 192.168.1.255  //for virtual machine 1
+
+ifconfig eth1 192.168.1.4 netmask 255.255.255.0 broadcast 192.168.1.255  //for virtual machine 2
+
+ifconfig eth1 up // for both vitual machines 
+
+
+-----------------------------------------------------------------------------------------------
+
+1. Caching-only Nameserver
+===============================================================================
+
+Setup Machine 1 to function as a caching-only nameserver for
+labnet. It will not be authoritative for any domain, and will only
+resolve queries on behalf of the clients, and cache the results.
+
+Configure the nameserver to forward all queries, for which it does not
+have a cached answer, to the cse.hut.fi primary name server. Only
+allow queries and recursion from your laboratory network, and
+localhost. Before you make any changes to the configuration files,
+make backup copies of the original files.
+
+Update: The example configuration files can be found in
+/usr/share/doc/bind-9.x.x/sample/etc/ and
+/usr/share/doc/bind-9.x.x/sample/var/.
+
+Start your nameserver ( service named start ), and watch the logfile
+'/var/log/messages' for any error messages. Test, that you can resolve
+addresses through your own nameserver from the second machine. You can
+use dig(1) to do the lookups.
+
+
+
+Questions: 
+==========
+
+1.1 Provide unified diffs of configuration files to the originals. Use
+    command 'diff -u file.orig file' to get the differences. Explain
+    the changes you made. [ 2p. ]  [Edited]
+
+[Comment: changes in the file named.caching-nameserver.conf is completely re-done.
+                But the rest of the files remain the same. Also I have provided newly tested data.]
+
+Answer:
+
+I had to install caching-nameserver package (with yum install caching-nameserver).
+
+before I started working I made a folder named "Lab2Backup" and I backed up the following files:
+
+/etc/resolv.conf
+
+/etc/hosts
+
+/etc/sysconfig/network-scripts/ifcfg-eth1
+
+/var/named/chroot/etc/named.caching-nameserver.conf
+
+
+now lets look at the changes that I have made with the file named.caching-nameserver.conf: 
+
+[root@localhost ~]# diff -u /root/answers/dnsBackup/named.caching-nameserver.conf /var/named/chroot/etc/named.caching-nameserver.conf
+--- /root/answers/dnsBackup/named.caching-nameserver.conf       2010-01-20 10:55:37.000000000 +0200
++++ /var/named/chroot/etc/named.caching-nameserver.conf 2010-01-20 12:23:24.000000000 +0200
+@@ -13,6 +13,11 @@
+ //
+ options {
+        listen-on port 53 { 127.0.0.1; };
++
++        //Changes by Anis (Start) 
++       listen-on port 53 {  192.168.1.3; }; // gave the IP address of eth1 that will listen to DNS request.
++       //Changes by Anis (End)
++
+        listen-on-v6 port 53 { ::1; };
+        directory       "/var/named";
+        dump-file       "/var/named/data/cache_dump.db";
+@@ -24,8 +29,14 @@
+        // query-source    port 53;
+        // query-source-v6 port 53;
+ 
+-       allow-query     { localhost; };
+-       allow-query-cache { localhost; };
++       //Changes by Anis (Start)
++       forwarders { 130.233.224.1; 130.233.224.13;}; // These are the IPs of the primary nameservers of 
+									 // cse.hut.fi
+									 
++       forward only;						// Meaning that its a caching-only nameserver and it only 
+									// forwards request to the primary nameservers.
+									
++       allow-query { 192.168.1.0/24; 127.0.0.1;};     // This DNS server will allow query from labnet and local host  
++       //Changes by Anis (End)
++
++       //allow-query     { localhost; };
++       //allow-query-cache { localhost; };
+ };
+ logging {
+         channel default_debug {
+	 
+	 
+=====================================================================================
+[Comment: No change]
+
+diff -u /root/Lab2Backup/resolv.conf /etc/resolv.conf
+output:
+
+ ; generated by /sbin/dhclient-script
+ search localfarm
+-nameserver 130.233.40.5
+-nameserver 130.233.192.1
+-nameserver 130.233.224.1
++;nameserver 127.0.0.1    // I commented out this line. 
++nameserver 192.168.1.3  // the host with the IP 192.168.1.3 should be queried to resolve
+			           // all DNS queries. 
+
+======================================================================================
+
+[Comment: No change]
+
+diff -u /root/Lab2Backup/hosts /etc/hosts
+output:
+
+ # Do not remove the following line, or various programs
+ # that require network functionality will fail.
+ 127.0.0.1              localhost.localdomain localhost // According to RedHat documentation, removing 
+                                                                     // all the lines except this one may simplify
+							             // debugging. This is ofcourse optional.
+-::1            localhost6.localdomain6 localhost6
+-       3ffe:300:10:3::2 Node1            
+-       3ffe:300:10:4::2 Node2
+-       3ffe:300:10:3::1 Router Router-0
+-       3ffe:300:10:4::1 Router-1
+========================================================================================
+
+[Comment: No change]
+
+diff -u /root/Lab2Backup/ifcfg-eth1 /etc/sysconfig/network-scripts/ifcfg-eth1
+Output:
+
+ BOOTPROTO=dhcp
+ ONBOOT=yes
+ HWADDR=00:16:3e:3d:a1:b5
++PEERDNS=no // This line is appended to avoid resetting the DNS server setting by accidenatally 
+                   // re-requesting DHCP address.
+
+=========================================================================================
+[Comment: Done again]
+
+[Comment: All the testing has been done all over again after changes were made to named.caching-nameserver.conf]
+
+Now we test: dig evoknow.com (This is my ex-employer..... :D)
+
+[root@localhost ~]# dig evoknow.com
+
+; <<>> DiG 9.3.6-P1-RedHat-9.3.6-4.P1.el5_4.1 <<>> evoknow.com
+;; global options:  printcmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 26143
+;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 3, ADDITIONAL: 0
+
+;; QUESTION SECTION:
+;evoknow.com.                   IN      A
+
+;; ANSWER SECTION:
+evoknow.com.            7200    IN      A       75.147.236.233
+
+;; AUTHORITY SECTION:
+evoknow.com.            7200    IN      NS      ns19.zoneedit.com.
+evoknow.com.            7200    IN      NS      ns14.zoneedit.com.
+evoknow.com.            7200    IN      NS      ns16.zoneedit.com.
+
+;; Query time: 199 msec
+;; SERVER: 192.168.1.3#53(192.168.1.3)
+;; WHEN: Wed Jan 20 11:13:20 2010
+;; MSG SIZE  rcvd: 111
+
+From the above dig query we can see that it took 199 msec to receive the DNS request. 
+Now we test out the caching ability of the nameserver by running dig again on the 
+evoknow.com domain: 
+
+[root@localhost ~]# dig evoknow.com
+
+; <<>> DiG 9.3.6-P1-RedHat-9.3.6-4.P1.el5_4.1 <<>> evoknow.com
+;; global options:  printcmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 35147
+;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 3, ADDITIONAL: 0
+
+;; QUESTION SECTION:
+;evoknow.com.                   IN      A
+
+;; ANSWER SECTION:
+evoknow.com.            7159    IN      A       75.147.236.233
+
+;; AUTHORITY SECTION:
+evoknow.com.            7159    IN      NS      ns16.zoneedit.com.
+evoknow.com.            7159    IN      NS      ns19.zoneedit.com.
+evoknow.com.            7159    IN      NS      ns14.zoneedit.com.
+
+;; Query time: 0 msec
+;; SERVER: 192.168.1.3#53(192.168.1.3)
+;; WHEN: Wed Jan 20 11:14:01 2010
+;; MSG SIZE  rcvd: 111
+
+
+Query time dropped from 199 msec to 0 msec after the previous DNS query was cached. Caching is working! :D
+
+===================================================================
+
+Another test:
+
+[root@localhost ~]# dig @localhost www.tkk.fi
+
+; <<>> DiG 9.3.6-P1-RedHat-9.3.6-4.P1.el5_4.1 <<>> @localhost www.tkk.fi
+; (1 server found)
+;; global options:  printcmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 53968
+;; flags: qr rd ra; QUERY: 1, ANSWER: 2, AUTHORITY: 3, ADDITIONAL: 3
+
+;; QUESTION SECTION:
+;www.tkk.fi.                    IN      A
+
+;; ANSWER SECTION:
+www.tkk.fi.             3600    IN      CNAME   www.hut.fi.
+www.hut.fi.             3600    IN      A       130.233.224.254
+
+;; AUTHORITY SECTION:
+hut.fi.                 3600    IN      NS      ns2.hut.fi.
+hut.fi.                 3600    IN      NS      ns-secondary.funet.fi.
+hut.fi.                 3600    IN      NS      ns1.hut.fi.
+
+;; ADDITIONAL SECTION:
+ns1.hut.fi.             3600    IN      A       130.233.224.1
+ns2.hut.fi.             3600    IN      A       130.233.224.13
+ns-secondary.funet.fi.  13167   IN      A       128.214.248.132
+
+;; Query time: 5 msec
+;; SERVER: 127.0.0.1#53(127.0.0.1)
+;; WHEN: Wed Jan 20 12:23:58 2010
+;; MSG SIZE  rcvd: 183
+
+
+
+[root@localhost ~]# dig @localhost www.tkk.fi
+
+; <<>> DiG 9.3.6-P1-RedHat-9.3.6-4.P1.el5_4.1 <<>> @localhost www.tkk.fi
+; (1 server found)
+;; global options:  printcmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 61177
+;; flags: qr rd ra; QUERY: 1, ANSWER: 2, AUTHORITY: 3, ADDITIONAL: 3
+
+;; QUESTION SECTION:
+;www.tkk.fi.                    IN      A
+
+;; ANSWER SECTION:
+www.tkk.fi.             3596    IN      CNAME   www.hut.fi.
+www.hut.fi.             3596    IN      A       130.233.224.254
+
+;; AUTHORITY SECTION:
+hut.fi.                 3596    IN      NS      ns1.hut.fi.
+hut.fi.                 3596    IN      NS      ns2.hut.fi.
+hut.fi.                 3596    IN      NS      ns-secondary.funet.fi.
+
+;; ADDITIONAL SECTION:
+ns1.hut.fi.             3596    IN      A       130.233.224.1
+ns2.hut.fi.             3596    IN      A       130.233.224.13
+ns-secondary.funet.fi.  13163   IN      A       128.214.248.132
+
+;; Query time: 0 msec
+;; SERVER: 127.0.0.1#53(127.0.0.1)
+;; WHEN: Wed Jan 20 12:24:02 2010
+;; MSG SIZE  rcvd: 183
+
+Query time dropped from 5 msec to 0 msec after the previous DNS query was cached. Caching is also working here! :D
+
+==============================================================================================
+
+[Comment: the /etc/resolv.conf remains the same. But testing is done again.]
+
+Now lets go to the client: with IP 192.168.1.4 on eth1
+
+The only change was made to /etc/resolv.conf
+
+[root@localhost ~]# diff -u /root/answers/dnsBackup/resolv.conf /etc/resolv.conf--- /root/answers/dnsBackup/resolv.conf 2010-01-20 12:35:23.000000000 +0200
++++ /etc/resolv.conf    2010-01-20 12:36:02.000000000 +0200
+@@ -1,5 +1,6 @@
+ ; generated by /sbin/dhclient-script
+ search localfarm
+-nameserver 130.233.40.5
+-nameserver 130.233.192.1
+-nameserver 130.233.224.1
++nameserver 192.168.1.3  // the host with the IP 192.168.1.3 (eth1 of virtual machine 1) should be queried 
+				    // to resolve all DNS queries.
+
+
+[Comment: Done again]
+Now we test:
+[root@localhost ~]# dig evoknow.com
+
+; <<>> DiG 9.3.4-P1 <<>> evoknow.com
+;; global options:  printcmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: REFUSED, id: 61226
+;; flags: qr rd; QUERY: 1, ANSWER: 0, AUTHORITY: 0, ADDITIONAL: 0
+
+;; QUESTION SECTION:
+;evoknow.com.                   IN      A
+
+;; Query time: 2 msec
+;; SERVER: 192.168.1.3#53(192.168.1.3)
+;; WHEN: Wed Jan 20 12:36:38 2010
+;; MSG SIZE  rcvd: 29
+
+
+
+[root@localhost ~]# dig evoknow.com
+
+; <<>> DiG 9.3.4-P1 <<>> evoknow.com
+;; global options:  printcmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: REFUSED, id: 30475
+;; flags: qr rd; QUERY: 1, ANSWER: 0, AUTHORITY: 0, ADDITIONAL: 0
+
+;; QUESTION SECTION:
+;evoknow.com.                   IN      A
+
+;; Query time: 1 msec
+;; SERVER: 192.168.1.3#53(192.168.1.3)
+;; WHEN: Wed Jan 20 12:40:36 2010
+;; MSG SIZE  rcvd: 29
+
+Query time dropped from 2 msec to 1 msec.
+
+
+2. Create your own tld .insec
+===============================================================================
+
+Configure Machine 1 to be the primary master for .insec domain. For
+that you will need to create zone definitions, reverse mappings, and
+to let your server know it will be authoritative for the zone.
+
+Create a zone file for .insec with the following information: 
+
+* Primary name server for the zone is ns.insec
+* Contact address should be hostmaster@insec
+* Use short refresh and retry time limits of 60 seconds
+* Put your machine's ip in ns.insec's A record
+
+Similarly create a reverse mapping zone c.b.a.in-addr.arpa, where a, b
+and c are the first three numbers of the virtual machine's current IP
+address for eth1 (i.e.  IP = a.b.c.xxx -> c.b.a.in-addr.arpa).
+
+Add a master zone entry for .insec and c.b.a.in-addr.arpa (see above)
+in named.conf.local. Reload bind's configuration files and watch the
+log for errors. Try to resolve ns.insec.
+
+
+Questions: 
+==========
+
+2.1 Provide unified diffs of configuration files to the
+    originals. Explain the changes you made. [ 5p. ] [Edited]
+
+[Comment: The significance of SOA and NS records for the master server are explained]
+
+Answer:
+
+[Comment: No change]
+
+diff -u /root/Lab2Backup/named.rfc1912.zones /var/named/chroot/etc/named.rfc1912.zones
+--- /root/Lab2Backup/named.rfc1912.zones        2009-10-03 13:19:48.000000000 +0300
++++ /var/named/chroot/etc/named.rfc1912.zones   2009-10-03 21:09:59.000000000 +0300
+@@ -47,3 +47,5 @@
+        file "named.zero";
+        allow-update { none; };
+ };
++
++include "/etc/named.conf.local"; 
+
+The only change is that, I included a file called named.conf.local, which is going to be 
+the configuration file.
+
+=========================================================================================
+
+[Comment: No change]
+
+If we look inside this file (named.conf.local) by:
+diff -u /root/Lab2Backup/named.conf.local /var/named/chroot/etc/named.conf.local
+
+
+// here I declare a zone declarion section so that this nameserver works 
+// as the master nameserver for the zone for hostname-to-address mapping.
+
++zone "insec" IN {   
++        type master;
++        file "/var/named/insec.zone";// Location of the zone file with respect to /var/named/chroot
++        allow-update { none; }; // This is not required here. I was just experimenting!
++};
++
++
+
+// here I declare another zone declarion section so that this nameserver works 
+// as the master for the reverse lookupzone in order to do address-to-hostname mapping.
+
+
++zone "1.168.192.in-addr.arpa" IN {  
++        type master;
++        file "/var/named/192.168.1.zone"; // Location of the zone file with respect to /var/named/chroot
++        allow-update { none; };
++};
+
+===========================================================================================
+
+Lets look into the zone files located at /var/named/chroot/var/named/  
+
+[Added: The significance of SOA and NS records for the master server are explained below.]
+
+The insec.zone file 
+
++$TTL   86400 ; 						   // Defines how long the record will be cached. 
++
++@      IN       SOA ns.insec.  hostmaster.insec. (   
++                             2009101001 ; serial         // Serial is used for version control on DNS datbase files. 	    
+
++                             60 ; refresh                    // "refresh" is the delay time that slave name servers should wait before checking
+							          // the master name server's serial number for changes.
+								  
++                             60 ; retry                       // retry is the time that a slave name server should wait before refreshing its 
+							          // database after a "refresh" has failed.
+								  
++                             1w ; expire                    // "expire" is the upper limit that a slave name server should use in serving DNS information
+							          // for lack of a refresh from the master name server. Here its 1 week.
+								  
++                             3h ; minimum		  // minimum TTL for negative answers specify how long a nameserver should cache a "no such
+								  // host" response from an authoritative server of the domain.  
++                            )
++@               IN      NS     ns.insec. ; 	          // ns records designate name servers to use for this domain. It contains one DNS server  
+								  // (here its ns.insec.) that is authoritative for the zone. 
++ns.insec.      IN      A      192.168.1.3
+
+Explanation:
+SOA: The Start of Authority (SOA) indicates which server is authoratative for a particular zone. 
+SOA designates the beginning of the zone data and sets the default parameters for that zone. 
+The @ is interpreted as the name of the originating domain - here it is "insec." (though @ is not manditory).
+The last string in the 1st line 	of the SOA record specifies the email of the contact person (here its 
+hostmaster@insec), where @ is replaced by a dot.  
+
+Source: http://www.linuxhomenetworking.com/wiki/index.php/Quick_HOWTO_:_Ch18_:_Configuring_DNS
+
+
+The 192.168.1.zone file 
+
+
++$TTL    86400
++@       IN      SOA    ns.insec. hostmaster.insec. (
++                     2009101001         ; Serial
++                             60              ; Refresh
++                             60              ; Retry
++                             1w             ; Expire
++                         604800 )         ; Negative Cache TTL
++;
++
++@   IN  NS  ns.insec.
++3   IN  PTR ns.insec.
+====================================================================================
+
+[Comment: No change]
+
+2.2 Provide the output of dig(1) for a successful query. [ 2p. ]
+
+Answer:
+
+dig @192.168.1.3 in ns insec
+
+ouput of this query:
+
+; <<>> DiG 9.3.4-P1 <<>> @192.168.1.3 in ns insec
+; (1 server found)
+;; global options:  printcmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 7262
+;; flags: qr aa rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
+
+;; QUESTION SECTION:
+;insec.                         IN      NS
+
+;; ANSWER SECTION:
+insec.                  86400   IN      NS      ns.insec.
+
+;; ADDITIONAL SECTION:
+ns.insec.               86400   IN      A       192.168.1.3
+
+;; Query time: 1 msec
+;; SERVER: 192.168.1.3#53(192.168.1.3)
+;; WHEN: Mon Oct  5 10:27:47 2009
+;; MSG SIZE  rcvd: 56
+
+
+dig @192.168.1.3 in ptr 3.1.168.192.in-addr.arpa
+
+ouput of this query:
+
+; <<>> DiG 9.3.4-P1 <<>> @192.168.1.3 in ptr 3.1.168.192.in-addr.arpa
+; (1 server found)
+;; global options:  printcmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 24307
+;; flags: qr aa rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 1, ADDITIONAL: 1
+
+;; QUESTION SECTION:
+;3.1.168.192.in-addr.arpa.      IN      PTR
+
+;; ANSWER SECTION:
+3.1.168.192.in-addr.arpa. 86400 IN      PTR     ns.insec.
+
+;; AUTHORITY SECTION:
+1.168.192.in-addr.arpa. 86400   IN      NS      ns.insec.
+
+;; ADDITIONAL SECTION:
+ns.insec.               86400   IN      A       192.168.1.3
+
+;; Query time: 0 msec
+;; SERVER: 192.168.1.3#53(192.168.1.3)
+;; WHEN: Mon Oct  5 10:29:09 2009
+;; MSG SIZE  rcvd: 94
+
+
+3. Create a slave server for .insec
+===============================================================================
+
+Configure Machine 2 to work as a slave for .insec domain. Again, make
+copies of original files. Use similar configuration as for the master,
+but don't create zone files.
+
+On the master server, add an entry (A, PTR and NS -records) for your
+slave server. Don't forget to increment the serial number for the
+zone. Also allow zone transfers to your slave.
+
+Reload configuration files in both machines and watch the logs. Verify
+that the zone files get transferred to the slave. Try to resolve
+machines in the .insec domain through both servers.
+
+Questions: 
+==========
+
+3.1 Provide unified diffs of configuration files to the
+    originals. Explain the changes you made. [ 6p. ] 
+
+[Comment: Explanation of the slave NS record in the master's zone configuration is given.]
+
+Answer:
+
+[Comment: No change]
+
+The following is in the virtual machine of Master DNS (IP: 192.168.1.3)
+
+In order to avoid confusion, I created a named.conf file from scratch:
+
+diff -u /root/Lab2Backup/named.conf /var/named/chroot/etc/named.conf
+Output-------->
+
++options {
++  directory "/var/named"; 
++  // BIND directory to store logs and zone data.
++  version "my foul master DNS"; 
++  // This is used for security measure.
++  allow-recursion {192.168.1.0/24;};
++ 
++};
++
++// The following is to provide fine tuning options for server to log messages.
++logging
++{
++channel default_debug {
++file "data/named.run";
++severity dynamic;
++};
++};
++/* to include localhost and other */
++include "/etc/named.rfc1912.zones";
++/* to include the root server */
++include "/etc/named.root.hints";
++/* to include my zones */
++include "/etc/named.conf.local";
+================================================================================ 
+
+[Comment: Only the "allow-transfer" option has been edited.]
+
+The named.conf.local was also made from scratch:
+
+diff -u /root/Lab2Backup/named.conf.local /var/named/chroot/etc/named.conf.local
+
+
++zone "insec" in{
++type master;
++file "/var/named/insec.master.forward.zone";     //used different zone file name from the previous exercise
++allow-transfer { 192.168.1.4; };                      //allow-transfer defines a match list e.g. IP addresses that are allowed to                                                   
+								  //transfer the zone information from the server. 
+								   
++allow-query {localhost; 192.168.1.3; 192.168.1.4;};
++};
++
++
++zone "1.168.192.in-addr.arpa" in{  
++        type master;
++        file "/var/named/192.168.1.reverse.zone";
++        allow-transfer{192.168.1.4;}; 
++        allow-query {localhost; 192.168.1.3; 192.168.1.4;};
++};
++
++
+==================================================================================
+
+[Comment: Explanation of the slave NS record in the master's zone configuration is given below.]
+
+As we are now considering a slave, information of that needs to go into the zone files:
+
+diff -u /root/Lab2Backup/insec.master.forward.zone /var/named/chroot/var/named/insec.master.forward.zone
+
++$TTL    86400 ;  1d
++
++@      IN        SOA ns.insec.  hostmaster.insec. (
++                              2009101004 ; serial number YYYYMMDDCC
++                              60 ; refresh
++                              60 ; retry
++                              1w ; expire
++                              3h ; minimum
++                             )
++@               IN      NS      ns.insec.
+						    // [Added:]	
++@               IN      NS      ns2.insec. // ns records designate name servers to use for this domain. Previously 
+						    // in the insec.master.forward.zone file we have configured the "allow-transfer"
+						    // option. Now we have to make sure that master servers are aware of slave 
+						    // servers by adding NS record (so that zone transfer can be done) and later 
+						    // an "A" record. In case of the reverse zone file, it is done by adding a NS and
+						    // then a PTR record for ns2.insec.
+    
++ns.insec.       IN      A       192.168.1.3
++ns2.insec.      IN      A       192.168.1.4 
+
+
+diff -u /root/Lab2Backup/192.168.1.reverse.zone /var/named/chroot/var/named/192.168.1.reverse.zone
+
+[Comment: No change]
+
++$TTL    86400
++@       IN      SOA    ns.insec. hostmaster.insec. (
++                     2009101004         ; Serial
++                             60              ; Refresh
++                             60              ; Retry
++                             1w             ; Expire
++                         604800 )         ; Negative Cache TTL
++;
++
++@   IN  NS  ns.insec.
++@   IN  NS  ns2.insec.
++3   IN  PTR ns.insec.
++4   IN  PTR ns2.insec.
++
+=======================================================================================
+
+[Comment: No change]
+
+Now lets look into the second virtual machine (ip: 192.168.1.4)
+
+diff -u /root/backupVirtual2/named.conf /var/named/chroot/etc/named.conf
+
++options {
++  directory "/var/named";
++  version "my foul slave DNS";
++  allow-notify {192.168.1.3;};
++  // in order to allow notification from master.
++  allow-recursion {192.168.1.0/24;};
++};
++
++/* to get localhost and other */
++include "/etc/named.rfc1912.zones";
++/* to get info of  root server */
++include "/etc/named.root.hints";
++
++/* to get info of our zones */
++include "/etc/named.conf.local";
+
+===========================================================================================
+
+[Comment: No change]
+
+diff -u /root/backupVirtual2/named.conf.local /var/named/chroot/etc/named.conf.local
+
++zone "insec"{
++        type slave;
++        file "insec.master.forward.zone";
++        masters {192.168.1.3;};// ip of the master server       
++};
++
++
++zone "1.168.192.in-addr.arpa"{
++        type slave;
++        file "192.168.1.reverse.zone";
++        masters {192.168.1.3;};
++            
++};
+
+============================================================================================
+
+Now if we do: "service named restart" on the slave side
+zone file are transferred from master.
+
+[Comment: Source is added.]
+
+Critical: 
+I added "ENABLE_ZONE_WRITE = yes" in the /etc/sysconfig/named file.
+Because by default, it is disabled. Without it the server was refusing
+to transfer zone files.
+
+Source: http://sipx-wiki.calivia.com/index.php/HowTo_Configure_DHCP_and_DNS_Servers
+
+=============================================================================================
+
+
+
+3.2 Provide the output of dig(1) for a successful query from the slave
+    server.  Are there any differences to the queries from the master?
+    [ 2p. ] [Edited]
+
+[Comment: Slave server is also queried.]
+
+Answer:
+dig query to the master server
+
+dig @192.168.1.3 in ns insec
+
+
+Master output:
+; <<>> DiG 9.3.4-P1 <<>> @192.168.1.3 in ns insec
+; (1 server found)
+;; global options:  printcmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 56956
+;; flags: qr aa rd ra; QUERY: 1, ANSWER: 2, AUTHORITY: 0, ADDITIONAL: 2
+
+;; QUESTION SECTION:
+;insec.                         IN      NS
+
+;; ANSWER SECTION:
+insec.                  86400   IN      NS      ns2.insec.
+insec.                  86400   IN      NS      ns.insec.
+
+;; ADDITIONAL SECTION:
+ns.insec.               86400   IN      A       192.168.1.3
+ns2.insec.              86400   IN      A       192.168.1.4
+
+;; Query time: 0 msec
+;; SERVER: 192.168.1.3#53(192.168.1.3)
+;; WHEN: Tue Oct 13 12:03:45 2009
+;; MSG SIZE  rcvd: 90
+
+
+dig query to the slave server:
+
+
+[Added:]
+
+[root@localhost ~]# dig @192.168.1.4 in ns insec
+
+; <<>> DiG 9.3.4-P1 <<>> @192.168.1.4 in ns insec
+; (1 server found)
+;; global options:  printcmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 11037
+;; flags: qr aa rd ra; QUERY: 1, ANSWER: 2, AUTHORITY: 0, ADDITIONAL: 2
+
+;; QUESTION SECTION:
+;insec.                         IN      NS
+
+;; ANSWER SECTION:
+insec.                  86400   IN      NS      ns.insec.
+insec.                  86400   IN      NS      ns2.insec.
+
+;; ADDITIONAL SECTION:
+ns.insec.               86400   IN      A       192.168.1.3
+ns2.insec.              86400   IN      A       192.168.1.4
+
+;; Query time: 1 msec
+;; SERVER: 192.168.1.4#53(192.168.1.4)
+;; WHEN: Thu Jan 21 04:01:30 2010
+;; MSG SIZE  rcvd: 90
+
+
+
+4. Create a subdomain .not.insec.
+===============================================================================
+
+Similarly as above, create a subdomain .not.insec, but reverse the
+roles of the servers - that is, use Machine 2 as a master, and Machine
+1 as a slave. Remember to add an entry for subdomain NS in the .insec
+zone files.
+
+Reload configuration files in both servers (watch the logs) and verify
+that the zone files get transferred to both slave servers. Try to
+resolve machines in .not.insec -domain from both the servers.
+
+Questions: 
+==========
+
+4.1 Provide unified diffs of configuration files to the
+    originals. Explain the changes you made. [ 5p. ] [edited]
+
+[Comment: Everything is re-done in 4.1]
+
+Answer:
+
+First of all, no changes were made to /var/named/chroot/etc/named.conf file.
+
+My VM1 (192.168.1.3) is still master for insec. domain; but it works as slave for 
+not.insec. domain. Its name.conf.local looks like (Sorry no "diff" here):
+
+//File: named.conf.local
+
+//No change [Start]
+
+zone "insec" in{
+type master;
+file "/var/named/insec.master.forward.zone";
+allow-transfer { 192.168.1.4; };                                               
+allow-query {localhost; 192.168.1.3; 192.168.1.4;};
+};
+
+
+zone "1.168.192.in-addr.arpa" in{
+        type master;
+        file "/var/named/192.168.1.reverse.zone";
+        allow-transfer{192.168.1.4;};
+        allow-query {localhost; 192.168.1.3; 192.168.1.4;};
+};
+
+//No change [End]
+
+//Edited to make it "slave" server for not.insec. domain
+zone "not.insec" in{
+       type slave;
+       masters{192.168.1.4;};
+};
+
+=============================================================
+
+My VM2 (192.168.1.4) is still slave for insec. domain; but it works as master for 
+not.insec. domain. Its name.conf.local looks like (Sorry no "diff" here):
+
+//File: named.conf.local
+
+//No change [Start]
+zone "insec"{
+        type slave;
+        file "insec.master.forward.zone";
+        masters {192.168.1.3;};
+};
+zone "1.168.192.in-addr.arpa"{
+        type slave;
+        file "192.168.1.reverse.zone";
+        masters {192.168.1.3;};
+
+};
+//No change [End]
+
+
+//Edited to make it "master" server for not.insec. domain
+zone "not.insec" in{
+       type master;
+       file "/etc/not.insec.forward.zone";
+       allow-transfer{192.168.1.3;};
+};
+
+
+Now we look at the zone file in the master server for not.insec. domain.
+
+$TTL    86400
+@       IN      SOA    not.insec. hostmaster.insec. (
+                     2010012506    ; Serial
+                             60         ; Refresh
+                             60         ; Retry
+                             1w        ; Expire
+                         604800 )    ; Negative Cache TTL
+;
+@               IN      NS      ns5.not.insec.
+@               IN      NS      ns7.not.insec.
+ns5.not.insec.  IN      A       192.168.1.4
+ns7.not.insec.  IN      A       192.168.1.3
+
+
+
+4.2 Provide the output of dig(1) for successful queries from both the
+    servers.  [ 2p. ] [Edited]
+
+[Comment: Newly taken]
+
+Answer:
+
+[Comment: newly taken dig(1) output.]
+
+Query at the Master server (taken at 192.168.1.4):
+
+[root@localhost ~]# dig @192.168.1.3 in NS not.insec
+
+; <<>> DiG 9.3.4-P1 <<>> @192.168.1.3 in NS not.insec
+; (1 server found)
+;; global options:  printcmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 64298
+;; flags: qr aa rd ra; QUERY: 1, ANSWER: 2, AUTHORITY: 0, ADDITIONAL: 2
+
+;; QUESTION SECTION:
+;not.insec.                     IN      NS
+
+;; ANSWER SECTION:
+not.insec.              86400   IN      NS      ns5.not.insec.
+not.insec.              86400   IN      NS      ns7.not.insec.
+
+;; ADDITIONAL SECTION:
+ns5.not.insec.          86400   IN      A       192.168.1.4
+ns7.not.insec.          86400   IN      A       192.168.1.3
+
+;; Query time: 1 msec
+;; SERVER: 192.168.1.3#53(192.168.1.3)
+;; WHEN: Mon Jan 25 15:22:49 2010
+;; MSG SIZE  rcvd: 95
+
+
+===================================================================
+
+Query at the Slave server (taken at 192.168.1.3):
+
+[root@localhost ~]# dig @192.168.1.4 in ns insec
+
+; <<>> DiG 9.3.6-P1-RedHat-9.3.6-4.P1.el5_4.1 <<>> @192.168.1.4 in ns insec
+; (1 server found)
+;; global options:  printcmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 32726
+;; flags: qr aa rd ra; QUERY: 1, ANSWER: 2, AUTHORITY: 0, ADDITIONAL: 2
+
+;; QUESTION SECTION:
+;insec.                         IN      NS
+
+;; ANSWER SECTION:
+insec.                  86400   IN      NS      ns.insec.
+insec.                  86400   IN      NS      ns2.insec.
+
+;; ADDITIONAL SECTION:
+ns.insec.               86400   IN      A       192.168.1.3
+ns2.insec.              86400   IN      A       192.168.1.4
+
+;; Query time: 1 msec
+;; SERVER: 192.168.1.4#53(192.168.1.4)
+;; WHEN: Mon Jan 25 15:21:22 2010
+;; MSG SIZE  rcvd: 90
+
+
+
+
+5. Implement Transaction Signatures
+===============================================================================
+
+One of the weak points of DNS is, that the zone transfers are not
+authenticated, which opens up an opportunity to alter the zone files during
+updates. Prevent this by enhancing the .not.insec -domain to implement
+transaction signatures.
+
+Generate a secret key to be shared between the master and slave with the
+command dnssec-keygen(8). Use HMAC-MD5 as the algorithm, a key length of 128
+bits and the nametype HOST.
+
+Create a shared key file with the following template:
+ 
+key keyname. {
+        algorithm hmac-md5;
+        secret "AWMKwGgIdMicVn/yizDUEA==";
+};
+
+Fill in the generated key and make it available to both the
+servers. Include the key file from both servers' named.conf files, and
+configure servers to only allow transfers signed with the key.
+
+Try first an unauthenticated transfer - and then verify, that you can
+do authenticated transfers.
+
+Questions: 
+==========
+
+5.1 Provide unified diffs of configuration files to the
+    originals. Explain the changes you made. Include an excerpt from
+    the log which shows the successful and the unsuccessful key
+    exchange. [ 5p. ]
+
+[Comment: This one is also completely re-written. I am sorry not to be able
+		to provide "diff"s for these.]
+
+Answer: On the master side of not.insec. domain, I did the following:
+[root@localhost ~]# dnssec-keygen -a HMAC-MD5 -b 128 -n HOST mysloppykey-not-insec.
+
+The above command produced the following file:
+Kmysloppykey-not-insec.+157+28984
+
+On the master side, I added the line:
+include "/etc/tsig.key"; in the /var/named/chroot/etc/named.conf file.
+
+Within the "/etc/tsig.key", I have:
+
+key mysloppykey-not-insec. {
+                            algorithm hmac-md5;
+                            secret "tv8U1f+Qh9jHxOXBb1n7fA==";
+                           };
+
+# Slave server IP
+server 192.168.1.3 { 
+                  keys {
+                                mysloppykey-not-insec.;
+                          };
+                 };
+
+As key transfer is needed for for the not.insec. subdomain, suitable changes 
+are made in the named.conf.local:
+
+# No change (start) 
+zone "insec"{
+        type slave;
+        file "insec.master.forward.zone";
+        masters {192.168.1.3;};
+};
+zone "1.168.192.in-addr.arpa"{
+        type slave;
+        file "192.168.1.reverse.zone";
+        masters {192.168.1.3;};
+
+};
+# No change (End)
+
+#The "allow-transfer" field is edited so that Key transfer is allowed.
+zone "not.insec" in{
+       type master;
+       file "/etc/not.insec.forward.zone";
+       allow-transfer{key mysloppykey-not-insec.;}; //allowing key transfer
+};
+
+
+-------------------------------------------------------------------------------------------
+
+Now on the slave side also, I added the line:
+include "/etc/tsig.key"; in the /var/named/chroot/etc/named.conf file.
+
+The contents of "/etc/tsig.key" file:
+
+key mysloppykey-not-insec. {
+                algorithm hmac-md5;
+                secret "tv8U1f+Qh9jHxOXBb1n7fA==";
+};
+
+#Master server IP
+server 192.168.1.4 { 
+                        keys { mysloppykey-not-insec.; };
+                   };
+
+Now, "service named restart" on both master and slave machine. 
+
+========================================================================
+Successful message on the master:
+
+[root@localhost ~]# tail -f /var/log/messages
+Jan 27 18:17:01 localhost named[7374]: client 192.168.1.4#53228: received notify for zone '1.168.192.in-addr.arpa'
+Jan 27 18:17:01 localhost named[7374]: zone 1.168.192.in-addr.arpa/IN: refused notify from non-master: 192.168.1.4#53228
+Jan 27 18:17:01 localhost named[7374]: client 192.168.1.4#53228: received notify for zone 'not.insec'
+Jan 27 18:17:04 localhost named[7374]: client 192.168.1.3#63286: received notify for zone 'insec': TSIG 'mysloppykey-not-insec'
+Jan 27 18:17:04 localhost named[7374]: zone insec/IN: notify from 192.168.1.3#63286: zone is up to date
+Jan 27 18:17:05 localhost named[7374]: client 192.168.1.3#57768: received notify for zone '1.168.192.in-addr.arpa': TSIG 'mysloppykey-not-insec'
+Jan 27 18:17:05 localhost named[7374]: zone 1.168.192.in-addr.arpa/IN: notify from 192.168.1.3#57768: zone is up to date
+Jan 27 18:17:05 localhost named[7374]: client 192.168.1.3#53176: transfer of 'not.insec/IN': AXFR started: TSIG mysloppykey-not-insec
+Jan 27 18:17:05 localhost named[7374]: client 192.168.1.3#53176: transfer of 'not.insec/IN': AXFR ended
+Jan 27 18:17:05 localhost named[7374]: client 192.168.1.3#20382: received notify for zone 'not.insec': TSIG 'mysloppykey-not-insec'
+
+
+
+Successful message on the slave:
+[root@localhost ~]# tail -f /var/log/messages
+Jan 27 18:17:04 localhost named[8259]: running
+Jan 27 18:17:04 localhost named[8259]: zone insec/IN: sending notifies (serial 2009101004)
+Jan 27 18:17:04 localhost named[8259]: zone 1.168.192.in-addr.arpa/IN: sending notifies (serial 2009101004)
+Jan 27 18:17:05 localhost named[8259]: zone not.insec/IN: Transfer started.
+Jan 27 18:17:05 localhost named[8259]: transfer of 'not.insec/IN' from 192.168.1.4#53: connected using 192.168.1.3#53176
+Jan 27 18:17:05 localhost named[8259]: zone not.insec/IN: transferred serial 2010012506: TSIG 'mysloppykey-not-insec'
+Jan 27 18:17:05 localhost named[8259]: transfer of 'not.insec/IN' from 192.168.1.4#53: end of transfer
+Jan 27 18:17:05 localhost named[8259]: zone not.insec/IN: sending notifies (serial 2010012506)
+Jan 27 18:17:05 localhost named[8259]: client 192.168.1.3#61941: received notify for zone 'not.insec'
+Jan 27 18:17:05 localhost named[8259]: zone not.insec/IN: refused notify from non-master: 192.168.1.3#61941
+Jan 27 18:17:16 localhost named[8259]: client 192.168.1.4#53228: received notify for zone 'not.insec': TSIG 'mysloppykey-not-insec'
+Jan 27 18:17:16 localhost named[8259]: zone not.insec/IN: notify from 192.168.1.4#53228: zone is up to date
+
+
+
+
+
+-------------------------------------------------------------------------------------------------------------------------
+Unsucessful messages (At Master): 
+
+[root@localhost ~]# tail -f /var/log/messages
+Jan 27 18:17:05 localhost named[7374]: client 192.168.1.3#53176: transfer of 'not.insec/IN': AXFR ended
+Jan 27 18:17:05 localhost named[7374]: client 192.168.1.3#20382: received notify for zone 'not.insec': TSIG 'mysloppykey-not-insec'
+Jan 27 18:32:35 localhost named[7374]: shutting down: flushing changes
+Jan 27 18:32:35 localhost named[7374]: stopping command channel on 127.0.0.1#953
+Jan 27 18:32:35 localhost named[7374]: stopping command channel on ::1#953
+Jan 27 18:32:35 localhost named[7374]: no longer listening on 127.0.0.1#53
+Jan 27 18:32:35 localhost named[7374]: no longer listening on 10.0.19.2#53
+Jan 27 18:32:35 localhost named[7374]: no longer listening on 192.168.1.4#53
+Jan 27 18:32:35 localhost named[7374]: exiting
+Jan 27 18:32:37 localhost named: /etc/tsig.key:1: key 'mysloppykey-not-insec.' must have both 'secret' and 'algorithm' defined
+
+
+
+
+Source: http://www.cyberciti.biz/faq/unix-linux-bind-named-configuring-tsig/
+
+
+5.2 TSIG is one way to implement transaction signatures. DNSSEC
+    describes another, SIG(0). Explain the differences. [ 2p. ] [Edited]
+
+[Comment: This answer is completely rewritten.]
+
+Answer:
+
+BIND supports TSIG for secures transaction. TSIG ensures that DNS messages come from the right place and are not 
+modified in transit.The TSIG key consists of a secret (a string) and a hashing algorithm. These keyed hash authentication 
+codes are relatively inexpensive to compute. By having the same shared secret (symmetric) key on two different DNS servers, 
+they can communicate securely and trust each other. Only endpoints that share a key can use TSIG to verify DNS messages. 
+An arbitrary key name is also  chosen that must be the same for both hosts (or endpoints). 
+
+SIG(0) on the other hand, uses asymmetric (public-private keys) cryptography for ensuring authenticity and integrity. 
+In other words, it signs zone data and ensures that resource records (RRs) are those signed by the administrator 
+of the zone. Here, public keys are stored in DNS as KEY RRs (resource records) and a private key is stored at the signer.
+But SIG(0)'s asymmetric (public-private keys) cryptographic operations are relatively expensive and lengthy. Because
+it involves obtaining and verifying the KEY needed to authenticate the request SIG(0). This in turn creates further requests.
+So SIG(0) should not be used on all requests. Unlike TSIG, any endpoints that support SIG(0) can use it to verify signed 
+zone data. Here the asymmetric cryptography uses the RSA and DSA algorithms.
+
+
+Source:
+http://nori.apnic.net/apnic/training/PACNOG4/presentations/3-July-03-Reverse-DNSSEC.pdf
+http://www.faqs.org/rfcs/rfc2931.html
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

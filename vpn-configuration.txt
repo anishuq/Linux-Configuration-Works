@@ -1,0 +1,2996 @@
+Virtual Private Network Assignment 2009
+=======================================
+
+Fill in!
+
+Name:A. M. Anisul Huq
+Student number:82372J
+
+==============================================================================
+			     Notice:
+
+VPN:
+
+"1.3 the IP address of the rightsourceip parameter is the address used by the right side in the encapsulated IP packets.  -1p
+
+3.1 SPI, IP addresses, and the security protocol (AH or ESP) identifies the security association. -1p, 
+    only two SAs are required, one for each direction. -1p 
+
+3.2 ESP packets should be shown in the traffic log. -1p
+
+3.3 Assuming that a IPSec tunnel is set up, packets are routed to the client, but client can't resolve the mac address where to send responses in the local network. -1p 
+
+4.1 ARP requests and responses won't travel across the gateway. Configuration should be changed so that client can resolve the mac address
+of the IP packet recipient (gw) that can forward the packets to the roadwarrior. The latter command creates a host route in the gateway to
+the roadwarrior. Thus, the packets are routed through the loopback device where the IPSec stack routes the packets according to the IPSec 
+policies. -3p
+
+4.2 any of the SPIs shown in the traffic log do not match to the SPIs given in section 3.1. -1p
+
+4.3 First, tracerouting client->roadwarrior causes gateway to send an ICMP time exceeded response, but in the roadwarrior->client 
+case the IP TTL is not checked. Thus, roadwarrior doesn't know that it is connected to the virtual private network through a gateway. 
+However, client can see that there is gateway between the client and the roadwarrior.
+Second, while pinging client->roadwarrior, the gateway tunnel interface sees the ping requests as ESP packets, but in the roadwarrior->client case the tunnel interface also sees unencrypted packets. -2p"
+
+Answes 1.3, 3.1, 3.2, 3.3, 4.1, 4.2 and 4.3 are edited.
+
+
+
+===============================================================================
+
+
+IP Security Architecture
+========================
+
+This assignment introduces you to the Virtual Private Network (VPN)
+concept. You will use IPsec to establish a VPN in practice by creating
+and examing a host-to-net VPN scenario (see the figure below). A
+roadwarrior host (RW) establishes a secure tunnel to a gateway
+(GW). Traffic can flow from the roadwarrior through the gateway to a
+client (C) and back. Other hosts on the right-side local link can not
+see the traffic flowing inside the tunnel. The goal of this assignment
+is you to test communication between the client and the roadwarrior by
+succesfully pinging and tracerouting each host in both directions. The
+IPSec tunnel mode is used in this assigment. In addition, RSA private
+keys are used as secrets.
+
+The notation xxx(y) in this document means the relevant UNIX manual
+pages in that phase. Use the command man y xxx to read them.
+
+
+      Local link     	 Local link
+      _____|_____	 _____|_____
+     |		 |	|	    |
+    eth1	eth1   eth2	   eth1
+   _____           _____	   _____
+  |	|	  |	|	  |	|
+  |  C	|	  | GW 	|<------->| RW	|
+  |	|	  |	|	  |	|
+  |_____|	  |_____|	  |_____|
+
+   eth0	   	   eth0		   eth0
+
+ 10.0.XX.2	 10.0.XX.1	 10.0.XX.3
+
+
+
+Client, Gateway, and Roadwarrior
+--------------------------------
+
+Set up the interfaces of the client, the gateway, and the roadwarrior
+hosts. Verify that you can ping the gateway from the other hosts, and
+that you can not ping the roadwarrior from the client or vice
+versa. Write down the network configuration.
+
+ifconfig (8), ping (8)
+
+Examine the OpenSWAN configuration on these hosts. The hosts have
+OpenSWAN installed, but not yet fully configured. Examine the example
+ipsec configuration files /etc/ipsec.conf and /etc/ipsec.secrets.
+
+ipsec.conf(5), ipsec.secrets(5)
+
+In a case that you can not find existing secrets, you can use the
+following command on the gateway and on the roadwarrior hosts: ipsec
+newhostkey --verbose --bits 256 --output /etc/ipsec.d/gw-rw.secrets.
+Print the corresponding public key on each host: ipsec showhostkey
+--left.
+
+ipsec(8)
+
+Command ipsec barf also gives lots of information about the IPSec
+subsystems and configuration files.
+
+Update:
+
+You can uncomment the line:
+  # plutodebug="control parsing"
+in ipsec.conf to get more debug information. 
+
+
+
+Question set 1:
+---------------
+
+1.1 What is the purpose of the two files? How they need to be
+    protected?  [2p]
+	
+    ipsec.conf: The ipsec.conf file holds the configuration and control information for ipsec.
+    The "config" section of this file holds the general configuration of ipsec; while the "conn" 
+    section specifies the ipsec connection.  
+
+    ipsec.secrets: The "ipsec.secrets" file holds the secrets used by the pluto daemon (this daemon 
+    handles the negotiation and periodic re-negotiation of keys using internet key exchange protocol)
+    between gateways. Both preshared secrets and RSA private keys can be configured here.
+
+    These two files can be protected by restrictive permissions. e.g. ipsec.secrets should be allowed
+    read access only to the root. And for ipsec.conf only root should be given read/write access.     
+
+
+1.2 What do the terms "left" and "right" stand for in the
+    configuration files?  [1p] [Edited]
+
+    [Comment: "rightsourceip" is re-defined.]	
+       
+
+    Left: The ip address on the left side of the VPN tunnel.
+    Right: The ip address on the right side of the VPN tunnel.
+
+    Note: It really does not matter which side is what, as long 
+    as they remain consistent.
+
+1.3 Explain the following parameters that can be set in the
+    ipsec.d/*.conf or ipsec.conf : leftid, leftrsasigkey, leftsubnet,
+    rightsourceip .  [4p]
+
+    leftid = FQDN or IP of the left side of the VPN tunnel. In the gateway (VM 1)
+		 we have used the IP of GW's eth2 (i.e. 192.168.18.1). 
+
+    leftrsasigkey = The RSA public key for the left side of the VPN tunnel. With the 
+			  ipsec showhostkey --left command, we see the RSA key as:
+			  [root@localhost ~]# ipsec showhostkey --left
+                          # rsakey AQOBwn/0S
+                        			leftrsasigkey=0sAQOBwn/0SxlD/ZDVcc/wobJKvTCJqzi9tu3urGiNszM1YQ2mxgAejqQ4LYKA/OdWniR/uK8jwQmCNujqESF7Misd 	 
+    
+    leftsubnet = The subnet on the left side of the VPN tunnel. In the GW's case, its the 
+	         192.168.17.0/24 (client's subnet).
+ 
+    
+    [Edited]	
+    rightsourceip = According to man page, it is the internal source IP to use in a tunnel for the  remote
+                        peer. Here its the IP address used by the other gateway to transmit packets to the left subnet.
+
+
+1.4 What is wrong with the given command to create the secret?  [1p]
+
+ipsec newhostkey --verbose --bits 256 --output /etc/ipsec.d/gw-rw.secrets
+The problem will be evident if I give:
+
+[root@localhost ~]# ipsec showhostkey --left
+ipsec showhostkey "/etc/ipsec.d/gw-rw.secrets" line 15: RSA modulus too small for security: less than 512 bits
+No keys found
+
+So the key has to be 512 bits and can be done by the following command:
+ipsec newhostkey --verbose --bits 512 --output /etc/ipsec.d/gw-rw.secrets
+
+
+
+Copy templates of ipsec.d/gw.conf and ipsec.d/rw.conf from here and
+place them in the right places on the virtual machines.
+
+  gw.conf:
+
+conn road
+    left=
+    leftid=
+    leftrsasigkey=
+    leftsubnet=
+    right=%any
+    rightid=
+    rightsourceip=
+    rightrsasigkey=
+    auto=add
+
+
+  rw.conf:
+
+conn road
+    left=
+    leftid=
+    leftsourceip=
+    leftrsasigkey=
+    right=
+    rightsubnet=
+    rightid=
+    rightrsasigkey=
+    auto=add
+
+On the gateway, use commands sysctl -w net.ipv4.ip_forward=1 and
+sysctl -w net.ipv4.conf.all.rp_filter=0
+
+sysctl(8)
+
+Edit the gw.conf and rw.conf files according to your network
+configuration.
+
+ipsec.conf(5)
+
+Restart the IPSec subsystems using the command /etc/init.d/ipsec
+restart on the gateway and on the roadwarrior.
+
+
+
+Question set 2:
+---------------
+
+2.1 Describe your network configuration. What IPs you assigned to the
+    interfaces (in total 4 interfaces) of each of the three host? [2p]
+
+    While working in the previous exercises, I must have done some undue
+    experiments (ooops!). So in VM3, there was no IPSEC. Hence I chose,
+    VM3 (10.0.19.3) as the client. 
+
+    So, VM1 (10.0.19.1) is our Gateway. 
+    Gateway's eth1 : 192.168.18.1
+	        eth2 : 192.168.17.2
+
+    VM2 (10.0.19.2) is our roadwarrior host (RW).
+    Its eth1: 192.168.18.2 
+
+    VM3 (10.0.19.3) is our client.
+    Its eth1 : 192.168.17.1  
+
+[root@localhost ~]# tcpdump -i eth1
+tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+listening on eth1, link-type EN10MB (Ethernet), capture size 96 bytes
+23:41:21.278526 arp who-has 192.168.17.3 tell 192.168.17.1
+23:41:21.279283 IP 192.168.17.3 > 192.168.17.1: ICMP echo request, id 28223, seq 7, length 64
+23:41:22.278561 arp who-has 192.168.17.3 tell 192.168.17.1
+23:41:22.279350 IP 192.168.17.3 > 192.168.17.1: ICMP echo request, id 28223, seq 8, length 64
+23:41:23.279464 IP 192.168.17.3 > 192.168.17.1: ICMP echo request, id 28223, seq 9, length 64
+23:41:23.282607 arp who-has 192.168.17.3 tell 192.168.17.1
+23:41:24.279581 IP 192.168.17.3 > 192.168.17.1: ICMP echo request, id 28223, seq 10, length 64
+23:41:24.282669 arp who-has 192.168.17.3 tell 192.168.17.1
+23:41:25.279585 IP 192.168.17.3 > 192.168.17.1: ICMP echo request, id 28223, seq 11, length 64
+
+2.2 What network address space you assigned to the subnetwork behind
+    the gateway where the client resides? How does this correspond to
+    the leftsourceip parameter in the roadwarrion configuration? [2p]
+
+Answer:
+
+    The subnetwork behind the gateway is 192.168.17.0/24. The leftsourceip
+    of RW is 192.168.17.3. This is done because the address space need to 
+    be in the same subnet.
+
+
+Establish security associations (SA)
+------------------------------------
+
+You must initiate the IPSec SA handshakes from the roadwarrior. Use
+command ipsec auto --up road .
+
+ipsec_auto(8)
+
+To stop the connection, use the command ipsec auto --down road .
+
+You can use command ipsec auto --status to check the current
+connection status and command setkey -D to view the security
+associations.
+
+setkey(8)
+
+If the security associations were correctly created, you can try to
+ping and traceroute the hosts (in both directions). Use tcpdump to
+view the network traffic on each host.
+
+
+
+Question set 3:
+---------------
+
+3.1 What details can you find about the security associations? How
+    security associations are identified? Include the output from both
+    of the previous commands.  [3p] [Edited]
+
+    [Comment: the question is completely re-written, two SAs are shown 
+     and source is added at the end.]
+
+
+Answer:
+    
+    Security association (SA) describes how connected devices will use security services to communicate securely. Both 
+    IKE and IPsec use SAs. IPsec SAs are unidirectional and they are unique in each security protocol. A set of SAs are           
+    needed for a protected data pipe, one per direction per protocol. For example, if one has a pipe that supports ESP            
+    between peers, one ESP SA is required for each direction. SAs are uniquely identified by destination (IPsec 
+    endpoint) address, security protocol (AH or ESP), and security parameter index (SPI). 
+
+    ----------------------------------------------------------------------------------------------------------------------------
+
+    The ipsec auto --status command gives a status on the Opesnswan running on the VPN. The output can be divided into 3 sections:
+
+    ESP Section: Defines the various data encryption algorithms (MD5, SHA1, SHA2, RIPEMD and AES_CBC etc.)and their parameters. 
+    At least one set of values must match between the left and right side VPN devices. 
+
+    IKE Section: Defines the various encrypted key exchange algorithms (DES, 3DES, Blowfish, Serpant, Cast and Twofish etc.) and 
+    their parameters. At least one set of values must match between the left and right side of the VPN devices. 
+	
+    VPN Section: This is usually prefaced by the name of the VPN tunnel, in this case "road". If there are no entries, 
+    then the VPN hasn't been established at all. Tunnels become active once the encrypted key exchange algorithms is chosen 
+    and security associations are created and this usually only occurs after traffic is flowing. The associations then 
+    get torn down after a timeout period. 
+    
+    [Output of "ipsec auto --status" command is given below.]
+    
+    -----------------------------------------------------------------------------------------------------------------------------
+    
+    If one host can ping the other host situated at the other side of the tunnel, IKE daemons will exchange keys and
+    establish SA. If we see the output of setkey -D, we will see the security associations. 
+
+    
+    [Added:]
+    For example, 
+
+    the first SA is defining that, 
+    SPI: 2765974068(0xa4dd6a34)
+    Source IP: 192.168.18.2
+    Dest IP: 192.168.18.1 
+    Protocol: ESP
+    Encryption algorithm: aes-cbc
+    HMAC algorithm: sha1
+    Encryption key: 964e7e34 dcc815f7 bb2dde84 6f5f75d8
+    HMAC key: 346fb087 0e42a39a 8f805384 1e108bef 3b182e21
+
+
+    the second SA is defining that, 
+    SPI: 61024236(0x03a327ec)
+    Source IP: 192.168.18.1
+    Dest IP: 192.168.18.2 
+    Protocol: ESP
+    Encryption algorithm: aes-cbc
+    HMAC algorithm: sha1
+    Encryption key: 7caac8d3 ff00f983 c8a7a099 3868a88e
+    HMAC key: 1e55fe4e dc976582 1810bbb7 c62555df 4900d605
+   
+    
+    Output of the commands:
+    
+    [root@localhost ~]# ipsec auto --up road 
+    117 "road" #57: STATE_QUICK_I1: initiate
+    004 "road" #57: STATE_QUICK_I2: sent QI2, IPsec SA established tunnel mode {ESP=>0xa4dd6a34 <0x03a327ec xfrm=AES_128-HMAC_SHA1 NATOA=none NATD=none DPD=none} 
+    =============================================================================================
+
+    [root@localhost ~]# ipsec auto --status 
+000 using kernel interface: netkey
+000 interface eth0/eth0 3ffe:300:10:3:216:3eff:fe07:c90b
+000 interface eth0/eth0 2001:db8:1:0:216:3eff:fe07:c90b
+000 interface lo/lo ::1
+000 interface lo/lo 127.0.0.1
+000 interface lo/lo 127.0.0.1
+000 interface eth0/eth0 10.0.19.2
+000 interface eth0/eth0 10.0.19.2
+000 interface eth1/eth1 192.168.18.2
+000 interface eth1/eth1 192.168.18.2
+000 %myid = (none)
+000 debug none
+000  
+000 algorithm ESP encrypt: id=2, name=ESP_DES, ivlen=8, keysizemin=64, keysizemax=64
+000 algorithm ESP encrypt: id=3, name=ESP_3DES, ivlen=8, keysizemin=192, keysizemax=192
+000 algorithm ESP encrypt: id=6, name=ESP_CAST, ivlen=8, keysizemin=40, keysizemax=128
+000 algorithm ESP encrypt: id=7, name=ESP_BLOWFISH, ivlen=8, keysizemin=40, keysizemax=448
+000 algorithm ESP encrypt: id=11, name=ESP_NULL, ivlen=0, keysizemin=0, keysizemax=0
+000 algorithm ESP encrypt: id=12, name=ESP_AES, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=13, name=ESP_AES_CTR, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=14, name=ESP_AES_CCM_A, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=15, name=ESP_AES_CCM_B, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=16, name=ESP_AES_CCM_C, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=18, name=ESP_AES_GCM_A, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=19, name=ESP_AES_GCM_B, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=20, name=ESP_AES_GCM_C, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=252, name=ESP_SERPENT, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=253, name=ESP_TWOFISH, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP auth attr: id=1, name=AUTH_ALGORITHM_HMAC_MD5, keysizemin=128, keysizemax=128
+000 algorithm ESP auth attr: id=2, name=AUTH_ALGORITHM_HMAC_SHA1, keysizemin=160, keysizemax=160
+000 algorithm ESP auth attr: id=5, name=AUTH_ALGORITHM_HMAC_SHA2_256, keysizemin=256, keysizemax=256
+000 algorithm ESP auth attr: id=8, name=AUTH_ALGORITHM_HMAC_RIPEMD, keysizemin=160, keysizemax=160
+000 algorithm ESP auth attr: id=9, name=AUTH_ALGORITHM_AES_CBC, keysizemin=128, keysizemax=128
+000 algorithm ESP auth attr: id=251, name=(null), keysizemin=0, keysizemax=0
+000  
+000 algorithm IKE encrypt: id=0, name=(null), blocksize=16, keydeflen=131
+000 algorithm IKE encrypt: id=3, name=OAKLEY_BLOWFISH_CBC, blocksize=8, keydeflen=128
+000 algorithm IKE encrypt: id=5, name=OAKLEY_3DES_CBC, blocksize=8, keydeflen=192
+000 algorithm IKE encrypt: id=7, name=OAKLEY_AES_CBC, blocksize=16, keydeflen=128
+000 algorithm IKE encrypt: id=65004, name=OAKLEY_SERPENT_CBC, blocksize=16, keydeflen=128
+000 algorithm IKE encrypt: id=65005, name=OAKLEY_TWOFISH_CBC, blocksize=16, keydeflen=128
+000 algorithm IKE encrypt: id=65289, name=OAKLEY_TWOFISH_CBC_SSH, blocksize=16, keydeflen=128
+000 algorithm IKE hash: id=1, name=OAKLEY_MD5, hashsize=16
+000 algorithm IKE hash: id=2, name=OAKLEY_SHA1, hashsize=20
+000 algorithm IKE hash: id=4, name=OAKLEY_SHA2_256, hashsize=32
+000 algorithm IKE hash: id=6, name=OAKLEY_SHA2_512, hashsize=64
+000 algorithm IKE dh group: id=2, name=OAKLEY_GROUP_MODP1024, bits=1024
+000 algorithm IKE dh group: id=5, name=OAKLEY_GROUP_MODP1536, bits=1536
+000 algorithm IKE dh group: id=14, name=OAKLEY_GROUP_MODP2048, bits=2048
+000 algorithm IKE dh group: id=15, name=OAKLEY_GROUP_MODP3072, bits=3072
+000 algorithm IKE dh group: id=16, name=OAKLEY_GROUP_MODP4096, bits=4096
+000 algorithm IKE dh group: id=17, name=OAKLEY_GROUP_MODP6144, bits=6144
+000 algorithm IKE dh group: id=18, name=OAKLEY_GROUP_MODP8192, bits=8192
+000  
+000 stats db_ops: {curr_cnt, total_cnt, maxsz} :context={0,0,0} trans={0,0,0} attrs={0,0,0} 
+000  
+000 "road": 192.168.17.3/32===192.168.18.2<192.168.18.2>[+S=C]...192.168.18.1<192.168.18.1>[+S=C]===192.168.17.0/24; erouted; eroute owner: #57
+000 "road":     myip=192.168.17.3; hisip=unset;
+000 "road":   ike_life: 3600s; ipsec_life: 28800s; rekey_margin: 540s; rekey_fuzz: 100%; keyingtries: 3
+000 "road":   policy: RSASIG+ENCRYPT+TUNNEL+PFS+UP+IKEv2ALLOW; prio: 32,24; interface: eth1; 
+000 "road":   newest ISAKMP SA: #55; newest IPsec SA: #57; 
+000 "road":   IKE algorithm newest: AES_CBC_128-SHA1-MODP2048
+000  
+000 #54: "road":500 STATE_MAIN_I4 (ISAKMP SA established); EVENT_SA_EXPIRE in 510s; lastdpd=-1s(seq in:0 out:0); idle; import:admin initiate
+000 #57: "road":500 STATE_QUICK_I2 (sent QI2, IPsec SA established); EVENT_SA_REPLACE in 27895s; newest IPSEC; eroute owner; isakmp#55; idle; import:admin initiate
+000 #57: "road" esp.a4dd6a34@192.168.18.1 esp.3a327ec@192.168.18.2 tun.0@192.168.18.1 tun.0@192.168.18.2 ref=0 refhim=4294901761
+000 #56: "road":500 STATE_QUICK_I2 (sent QI2, IPsec SA established); EVENT_SA_REPLACE in 27971s; isakmp#55; idle; import:admin initiate
+000 #56: "road" esp.6e71da02@192.168.18.1 esp.e89d341d@192.168.18.2 tun.0@192.168.18.1 tun.0@192.168.18.2 ref=0 refhim=4294901761
+000 #55: "road":500 STATE_MAIN_I4 (ISAKMP SA established); EVENT_SA_REPLACE in 2039s; newest ISAKMP; lastdpd=-1s(seq in:0 out:0); idle; import:admin initiate
+000 #45: "road":500 STATE_QUICK_I2 (sent QI2, IPsec SA established); EVENT_SA_REPLACE in 2135s; isakmp#44; idle; import:admin initiate
+000 #45: "road" esp.ab867182@192.168.18.1 esp.21e56f59@192.168.18.2 tun.0@192.168.18.1 tun.0@192.168.18.2 ref=0 refhim=4294901761
+000  
+
+==========================================================================
+
+[Comment: Two SAs; one for each direction]
+
+[root@localhost ~]# setkey -D 
+192.168.18.2 192.168.18.1 
+        esp mode=tunnel spi=2765974068(0xa4dd6a34) reqid=16385(0x00004001)
+        E: aes-cbc  964e7e34 dcc815f7 bb2dde84 6f5f75d8
+        A: hmac-sha1  346fb087 0e42a39a 8f805384 1e108bef 3b182e21
+        seq=0x00000000 replay=32 flags=0x00000000 state=mature 
+        created: Nov 11 14:03:51 2009   current: Nov 11 14:04:50 2009
+        diff: 59(s)     hard: 0(s)      soft: 0(s)
+        last:                           hard: 0(s)      soft: 0(s)
+        current: 0(bytes)       hard: 0(bytes)  soft: 0(bytes)
+        allocated: 0    hard: 0 soft: 0
+        sadb_seq=5 pid=15102 refcnt=0
+
+192.168.18.1 192.168.18.2 
+        esp mode=tunnel spi=61024236(0x03a327ec) reqid=16385(0x00004001)
+        E: aes-cbc  7caac8d3 ff00f983 c8a7a099 3868a88e
+        A: hmac-sha1  1e55fe4e dc976582 1810bbb7 c62555df 4900d605
+        seq=0x00000000 replay=32 flags=0x00000000 state=mature 
+        created: Nov 11 14:03:51 2009   current: Nov 11 14:04:50 2009
+        diff: 59(s)     hard: 0(s)      soft: 0(s)
+        last:                           hard: 0(s)      soft: 0(s)
+        current: 0(bytes)       hard: 0(bytes)  soft: 0(bytes)
+        allocated: 0    hard: 0 soft: 0
+        sadb_seq=2 pid=15102 refcnt=0
+    
+
+    [Source is added.]
+    Source: http://www.ciscosystems.ro/en/US/tech/tk583/tk372/technologies_tech_note09186a0080094203.shtml
+	        http://www.linuxhomenetworking.com/wiki/index.php/Quick_HOWTO_:_Ch35_:_Configuring_Linux_VPNs	
+
+3.2 Give an example of the output of tcpdump when examining traffic
+    over the IPSec tunnel.  [1p] [Edited]
+
+[Comment: Now Showing ESP Headers.]
+
+[root@localhost ~]# tcpdump -i eth1
+tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+listening on eth1, link-type EN10MB (Ethernet), capture size 96 bytes
+00:47:14.054361 IP 192.168.18.1 > 192.168.18.2: ESP(spi=0xa41731ab,seq=0x1), length 132
+00:47:14.219706 IP 192.168.17.1 > 192.168.17.3: ICMP echo request, id 1580, seq 1, length 64
+00:47:14.222288 IP 192.168.18.2 > 192.168.18.1: ESP(spi=0xa2c3fa57,seq=0x1), length 132
+00:47:15.017935 IP 192.168.18.1 > 192.168.18.2: ESP(spi=0xa41731ab,seq=0x2), length 132
+00:47:15.017935 IP 192.168.17.1 > 192.168.17.3: ICMP echo request, id 1580, seq 2, length 64
+00:47:15.018013 IP 192.168.18.2 > 192.168.18.1: ESP(spi=0xa2c3fa57,seq=0x2), length 132
+00:47:16.016953 IP 192.168.18.1 > 192.168.18.2: ESP(spi=0xa41731ab,seq=0x3), length 132
+00:47:16.016953 IP 192.168.17.1 > 192.168.17.3: ICMP echo request, id 1580, seq 3, length 64
+
+
+
+3.3 What is wrong with the current configuration?  [2p] [Edited]
+
+[Comment: Completely rewritten.]
+
+The problem is that, the client is getting ping request from RW, but client couldn't resolve the 
+mac address so that it can determine where to send ping replies in the local network. At the client
+machine the mac address for the "leftsourceip" of RW is incomplete. We see this, if we apply 
+the following command at the client,
+
+        [root@localhost ~]# arp -an
+        ? (10.0.0.1) at 00:16:3E:05:CC:5B [ether] on eth0
+	? (192.168.17.3) at <incomplete> on eth1
+
+
+------------------------------------------------------------------------
+On the gateway, use commands sysctl -w net.ipv4.conf.eth1.proxy_arp=1
+and route add "sourceip of the roadwarrior"/32 lo. Again use ping and
+traceroute (in both directions). Use tcpdump to view the network
+traffic on each host.
+
+arp(7), route(8)
+
+
+
+Question set 4:
+---------------
+
+4.1 How did the previous commands change your configuration?
+    Use 'arp -an' on the client host to view the ARP entries. How does
+    one of the entries correspond to the gateway?  [3p] [Edited]
+
+[Comment: Completely re-written]
+
+Answer:
+
+    [root@localhost ~]# sysctl -w net.ipv4.conf.eth1.proxy_arp=1
+        net.ipv4.conf.eth1.proxy_arp = 1
+    [root@localhost ~]# route add 192.168.17.3/32 lo
+	
+    The first command activates and enables proxy ARP on eth1 of GW.
+    The latter command creates a host route in the gateway to the RW.
+    
+    Now I can ping from RW to client.
+
+    [root@localhost ~]# ping 192.168.17.1
+PING 192.168.17.1 (192.168.17.1) 56(84) bytes of data.
+64 bytes from 192.168.17.1: icmp_seq=1 ttl=63 time=611 ms
+64 bytes from 192.168.17.1: icmp_seq=2 ttl=63 time=0.613 ms
+64 bytes from 192.168.17.1: icmp_seq=3 ttl=63 time=0.587 ms
+64 bytes from 192.168.17.1: icmp_seq=4 ttl=63 time=0.592 ms
+64 bytes from 192.168.17.1: icmp_seq=5 ttl=63 time=0.682 ms
+64 bytes from 192.168.17.1: icmp_seq=6 ttl=63 time=0.645 ms
+
+--- 192.168.17.1 ping statistics ---
+6 packets transmitted, 6 received, 0% packet loss, time 4997ms
+rtt min/avg/max/mdev = 0.587/102.493/611.844/227.788 ms
+
+
+tcpdump at client.
+ 
+[root@localhost ~]# tcpdump -i eth1
+tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+listening on eth1, link-type EN10MB (Ethernet), capture size 96 bytes
+00:28:28.101948 IP 192.168.17.3 > 192.168.17.1: ICMP echo request, id 55105, seq 1, length 64
+00:28:28.105484 IP 192.168.17.1 > 192.168.17.3: ICMP echo reply, id 55105, seq 1, length 64
+00:28:29.102327 IP 192.168.17.3 > 192.168.17.1: ICMP echo request, id 55105, seq 2, length 64
+00:28:29.102361 IP 192.168.17.1 > 192.168.17.3: ICMP echo reply, id 55105, seq 2, length 64
+00:28:30.102475 IP 192.168.17.3 > 192.168.17.1: ICMP echo request, id 55105, seq 3, length 64
+00:28:30.102507 IP 192.168.17.1 > 192.168.17.3: ICMP echo reply, id 55105, seq 3, length 64
+00:28:31.102496 IP 192.168.17.3 > 192.168.17.1: ICMP echo request, id 55105, seq 4, length 64
+    
+
+tcpdump at RW:
+
+[root@localhost ~]# tcpdump -i eth1
+tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+listening on eth1, link-type EN10MB (Ethernet), capture size 96 bytes
+00:47:14.054361 IP 192.168.18.1 > 192.168.18.2: ESP(spi=0xa41731ab,seq=0x1), length 132
+00:47:14.219706 IP 192.168.17.1 > 192.168.17.3: ICMP echo request, id 1580, seq 1, length 64
+00:47:14.222288 IP 192.168.18.2 > 192.168.18.1: ESP(spi=0xa2c3fa57,seq=0x1), length 132
+00:47:15.017935 IP 192.168.18.1 > 192.168.18.2: ESP(spi=0xa41731ab,seq=0x2), length 132
+00:47:15.017935 IP 192.168.17.1 > 192.168.17.3: ICMP echo request, id 1580, seq 2, length 64
+00:47:15.018013 IP 192.168.18.2 > 192.168.18.1: ESP(spi=0xa2c3fa57,seq=0x2), length 132
+00:47:16.016953 IP 192.168.18.1 > 192.168.18.2: ESP(spi=0xa41731ab,seq=0x3), length 132
+
+
+There wasn't any gatway added for client machine's eth1. That's why, I see no gateway's address. 
+[root@localhost ~]# arp -an
+? (10.0.0.1) at 00:16:3E:05:CC:5B [ether] on eth0
+
+The second entry is the "left" ip of the GW that is directly linked with the "left" 
+ip of the RW machine. Its now acting as the gateway.
+[root@localhost ~]# arp -an
+? (10.0.0.1) at 00:16:3E:05:CC:5B [ether] on eth0
+? (192.168.18.1) at 00:16:3E:3D:A1:B5 [ether] on eth1
+
+
+Source: http://www.linuxhomenetworking.com/wiki/index.php/Quick_HOWTO_:_Ch03_:_Linux_Networking
+	    http://codeidol.com/unix/linux-fix/Linux-Networking/How-to-Convert-Your-Linux-Server-into-a-Router/
+
+4.2 Give an example of the output of tcpdump when examining traffic
+    over the IPSec tunnel.  [1p] [Edited]
+
+
+[Comment: Explanation and source added.]
+------------------------------------------------------------------
+   
+
+tcpdump at RW:
+[root@localhost ~]# tcpdump -i eth1
+tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+listening on eth1, link-type EN10MB (Ethernet), capture size 96 bytes
+00:47:14.054361 IP 192.168.18.1 > 192.168.18.2: ESP(spi=0xa41731ab,seq=0x1), length 132
+00:47:14.219706 IP 192.168.17.1 > 192.168.17.3: ICMP echo request, id 1580, seq 1, length 64
+00:47:14.222288 IP 192.168.18.2 > 192.168.18.1: ESP(spi=0xa2c3fa57,seq=0x1), length 132
+00:47:15.017935 IP 192.168.18.1 > 192.168.18.2: ESP(spi=0xa41731ab,seq=0x2), length 132
+00:47:15.017935 IP 192.168.17.1 > 192.168.17.3: ICMP echo request, id 1580, seq 2, length 64
+00:47:15.018013 IP 192.168.18.2 > 192.168.18.1: ESP(spi=0xa2c3fa57,seq=0x2), length 132
+00:47:16.016953 IP 192.168.18.1 > 192.168.18.2: ESP(spi=0xa41731ab,seq=0x3), length 132
+00:47:16.016953 IP 192.168.17.1 > 192.168.17.3: ICMP echo request, id 1580, seq 3, length 64
+00:47:16.017031 IP 192.168.18.2 > 192.168.18.1: ESP(spi=0xa2c3fa57,seq=0x3), length 132
+00:47:17.015926 IP 192.168.18.1 > 192.168.18.2: ESP(spi=0xa41731ab,seq=0x4), length 132
+00:47:17.015926 IP 192.168.17.1 > 192.168.17.3: ICMP echo request, id 1580, seq 4, length 64
+00:47:17.016000 IP 192.168.18.2 > 192.168.18.1: ESP(spi=0xa2c3fa57,seq=0x4), length 132
+00:47:18.015863 IP 192.168.18.1 > 192.168.18.2: ESP(spi=0xa41731ab,seq=0x5), length 132
+00:47:18.015863 IP 192.168.17.1 > 192.168.17.3: ICMP echo request, id 1580, seq 5, length 64
+00:47:18.015936 IP 192.168.18.2 > 192.168.18.1: ESP(spi=0xa2c3fa57,seq=0x5), length 132
+00:47:19.015957 IP 192.168.18.1 > 192.168.18.2: ESP(spi=0xa41731ab,seq=0x6), length 132
+00:47:19.015957 IP 192.168.17.1 > 192.168.17.3: ICMP echo request, id 1580, seq 6, length 64
+00:47:19.016033 IP 192.168.18.2 > 192.168.18.1: ESP(spi=0xa2c3fa57,seq=0x6), length 132
+00:47:19.052036 arp who-has 192.168.18.1 tell 192.168.18.2
+00:47:19.052251 arp reply 192.168.18.1 is-at 00:16:3e:3d:a1:b5 (oui Unknown)
+
+
+Explanation: We know that, "auto" manipulates ipsec connections, setting them up and shutting them down based 
+		 on the information in the IPsec configuration file. The --up operation asks pluto (the daemon which 
+		 implements the IKE protocol) to establish a connection. The --down operation tells pluto to tear down 
+		 such a connection. Now for experimenting, I have executed the "ipsec auto --up road" and 
+		 "ipsec auto --down road" commands more than ones (as there was no instruction forbidding me from
+		 doing so). Each time I did this; new SA was created and thats why any of the SPIs shown in the traffic 
+		 log do not match with the SPIs given in section 3.1.   
+
+Source: http://www.linuxsecurity.com/resource_files/cryptography/FreeSWAN-HOWTO/manpage.d/ipsec_auto.8.html
+	    http://www.freeswan.org/freeswan_trees/freeswan-1.5/doc/overview.html#Pluto	
+
+
+4.3 Why the output is slightly different when pinging and tracerouting
+the client and roadwarrior hosts from different directions?  [2p] [Edited]
+
+[Comment: the answer is completely re-written.]
+
+At client:
+[root@localhost ~]# traceroute 192.168.17.3
+traceroute to 192.168.17.3 (192.168.17.3), 30 hops max, 40 byte packets
+ 1  192.168.17.3 (192.168.17.3)  614.598 ms !X  614.630 ms !X  614.629 ms !X
+
+     Path from GW to the RW is under VPN. Due to this, the 1st entry with its !X flag shows 
+     that the administrator has prohibited the use of ICMP (but the administrator has also configured 
+     router to send a message informing traceroute about this prohibition). 
+       
+     
+       
+At RW:
+[root@localhost ~]# traceroute 192.168.17.1
+traceroute to 192.168.17.1 (192.168.17.1), 30 hops max, 40 byte packets
+ 1  192.168.17.1 (192.168.17.1)  0.807 ms  0.812 ms  0.780 ms       
+
+
+
+tcpdump at client.
+ 
+[root@localhost ~]# tcpdump -i eth1
+tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+listening on eth1, link-type EN10MB (Ethernet), capture size 96 bytes
+00:28:28.101948 IP 192.168.17.3 > 192.168.17.1: ICMP echo request, id 55105, seq 1, length 64
+00:28:28.105484 IP 192.168.17.1 > 192.168.17.3: ICMP echo reply, id 55105, seq 1, length 64
+00:28:29.102327 IP 192.168.17.3 > 192.168.17.1: ICMP echo request, id 55105, seq 2, length 64
+00:28:29.102361 IP 192.168.17.1 > 192.168.17.3: ICMP echo reply, id 55105, seq 2, length 64
+00:28:30.102475 IP 192.168.17.3 > 192.168.17.1: ICMP echo request, id 55105, seq 3, length 64
+00:28:30.102507 IP 192.168.17.1 > 192.168.17.3: ICMP echo reply, id 55105, seq 3, length 64
+
+
+tcpdump at RW:
+[root@localhost ~]# tcpdump -i eth1
+tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+listening on eth1, link-type EN10MB (Ethernet), capture size 96 bytes
+00:47:14.054361 IP 192.168.18.1 > 192.168.18.2: ESP(spi=0xa41731ab,seq=0x1), length 132
+00:47:14.219706 IP 192.168.17.1 > 192.168.17.3: ICMP echo request, id 1580, seq 1, length 64
+00:47:14.222288 IP 192.168.18.2 > 192.168.18.1: ESP(spi=0xa2c3fa57,seq=0x1), length 132
+00:47:15.017935 IP 192.168.18.1 > 192.168.18.2: ESP(spi=0xa41731ab,seq=0x2), length 132
+00:47:15.017935 IP 192.168.17.1 > 192.168.17.3: ICMP echo request, id 1580, seq 2, length 64
+
+
+Pings are passing through GW. Path between RW and GW has a VPN tunnel. Hence ping request and
+replies now have extra ESPs (Encapsulating Security Payload) in them.
+
+
+Source: LPI Linux Certification in a Nutshell, 2nd Edition 
+	    By Jeff Dean, Bruno Gomes Pessanha, Nicolai Langfeldt, Steven Pritchard, James Stanger 
+	    ............................................... 
+	    Publisher: O'Reilly 
+            Pub Date: July 2006 
+            Print ISBN-10: 0-596-00528-8 
+            Print ISBN-13: 978-0-59-600528-3 
+	    http://rapidshare.com/files/9466566/OReilly.LPI.Linux.Certification.in.a.Nutshell.2nd.Ed.rar?ref=2E8C2872900B65A7108739F7D9901659	
+            (also available in Google Books) 
+
+
+
+
+
+
+Question set 5:
+---------------
+
+5.1 Once you are satisfied with the VPN configuration, run ipsec barf
+    and attach the output to your answer file.
+
+    "ipsec barf" command output at RW:
+
+
+    localhost.localdomain
+Fri Nov 13 01:11:39 EET 2009
++ _________________________ version
++ ipsec --version
+Linux Openswan U2.6.14/K2.6.18-128.7.1.el5xen (netkey)
+See `ipsec --copyright' for copyright information.
++ _________________________ /proc/version
++ cat /proc/version
+Linux version 2.6.18-128.7.1.el5xen (mockbuild@builder10.centos.org) (gcc version 4.1.2 20080704 (Red Hat 4.1.2-44)) #1 SMP Mon Aug 24 09:14:33 EDT 2009
++ _________________________ /proc/net/ipsec_eroute
++ test -r /proc/net/ipsec_eroute
++ _________________________ netstat-rn
++ netstat -nr
++ head -n 100
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags   MSS Window  irtt Iface
+192.168.18.0    0.0.0.0         255.255.255.0   U         0 0          0 eth1
+192.168.17.0    0.0.0.0         255.255.255.0   U         0 0          0 eth1
+10.0.0.0        0.0.0.0         255.255.0.0     U         0 0          0 eth0
+169.254.0.0     0.0.0.0         255.255.0.0     U         0 0          0 eth0
+0.0.0.0         10.0.0.1        0.0.0.0         UG        0 0          0 eth0
++ _________________________ /proc/net/ipsec_spi
++ test -r /proc/net/ipsec_spi
++ _________________________ /proc/net/ipsec_spigrp
++ test -r /proc/net/ipsec_spigrp
++ _________________________ /proc/net/ipsec_tncfg
++ test -r /proc/net/ipsec_tncfg
++ _________________________ /proc/net/pfkey
++ test -r /proc/net/pfkey
++ cat /proc/net/pfkey
+sk       RefCnt Rmem   Wmem   User   Inode
++ _________________________ ip-xfrm-state
++ ip xfrm state
+src 192.168.18.2 dst 192.168.18.1
+    proto esp spi 0xa2c3fa57 reqid 16385 mode tunnel
+    replay-window 32
+    auth hmac(sha1) 0xee1034dca31a97a37147debafe65a04b4396f013
+    enc cbc(aes) 0x7743aa0f6a88907f3cfa708e42386f45
+src 192.168.18.1 dst 192.168.18.2
+    proto esp spi 0xa41731ab reqid 16385 mode tunnel
+    replay-window 32
+    auth hmac(sha1) 0x4b592bbafc2e79b51089af000eaec0aa1dab3f06
+    enc cbc(aes) 0x734d06cc434a888977ed405dc9ca5a34
++ _________________________ ip-xfrm-policy
++ ip xfrm policy
+src 192.168.17.0/24 dst 192.168.17.3/32
+    dir in priority 2088
+    tmpl src 192.168.18.1 dst 192.168.18.2
+        proto esp reqid 16385 mode tunnel
+src 192.168.17.3/32 dst 192.168.17.0/24
+    dir out priority 2088
+    tmpl src 192.168.18.2 dst 192.168.18.1
+        proto esp reqid 16385 mode tunnel
+src 192.168.17.0/24 dst 192.168.17.3/32
+    dir fwd priority 2088
+    tmpl src 192.168.18.1 dst 192.168.18.2
+        proto esp reqid 16385 mode tunnel
+src ::/0 dst ::/0
+    dir in priority 0
+src ::/0 dst ::/0
+    dir in priority 0
+src ::/0 dst ::/0
+    dir in priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir in priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir in priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir in priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir in priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir in priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir in priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir in priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir in priority 0
+src ::/0 dst ::/0
+    dir out priority 0
+src ::/0 dst ::/0
+    dir out priority 0
+src ::/0 dst ::/0
+    dir out priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir out priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir out priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir out priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir out priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir out priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir out priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir out priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir out priority 0
++ _________________________ /proc/crypto
++ test -r /proc/crypto
++ cat /proc/crypto
+name         : deflate
+driver       : deflate-generic
+module       : deflate
+priority     : 0
+type         : compression
+
+name         : tnepres
+driver       : tnepres-generic
+module       : serpent
+priority     : 0
+type         : cipher
+blocksize    : 16
+min keysize  : 0
+max keysize  : 32
+
+name         : serpent
+driver       : serpent-generic
+module       : serpent
+priority     : 0
+type         : cipher
+blocksize    : 16
+min keysize  : 0
+max keysize  : 32
+
+name         : blowfish
+driver       : blowfish-generic
+module       : blowfish
+priority     : 0
+type         : cipher
+blocksize    : 8
+min keysize  : 4
+max keysize  : 56
+
+name         : twofish
+driver       : twofish-generic
+module       : twofish
+priority     : 0
+type         : cipher
+blocksize    : 16
+min keysize  : 16
+max keysize  : 32
+
+name         : md5
+driver       : md5-generic
+module       : md5
+priority     : 0
+type         : digest
+blocksize    : 64
+digestsize   : 16
+
+name         : sha256
+driver       : sha256-generic
+module       : sha256
+priority     : 0
+type         : digest
+blocksize    : 64
+digestsize   : 32
+
+name         : sha512
+driver       : sha512-generic
+module       : sha512
+priority     : 0
+type         : digest
+blocksize    : 128
+digestsize   : 64
+
+name         : sha384
+driver       : sha384-generic
+module       : sha512
+priority     : 0
+type         : digest
+blocksize    : 96
+digestsize   : 48
+
+name         : des3_ede
+driver       : des3_ede-generic
+module       : des
+priority     : 0
+type         : cipher
+blocksize    : 8
+min keysize  : 24
+max keysize  : 24
+
+name         : des
+driver       : des-generic
+module       : des
+priority     : 0
+type         : cipher
+blocksize    : 8
+min keysize  : 8
+max keysize  : 8
+
+name         : aes
+driver       : aes-generic
+module       : aes_generic
+priority     : 100
+type         : cipher
+blocksize    : 16
+min keysize  : 16
+max keysize  : 32
+
+name         : aes
+driver       : aes-x86_64
+module       : aes_x86_64
+priority     : 200
+type         : cipher
+blocksize    : 16
+min keysize  : 16
+max keysize  : 32
+
+name         : crc32c
+driver       : crc32c-generic
+module       : kernel
+priority     : 0
+type         : digest
+blocksize    : 32
+digestsize   : 4
+
+name         : sha1
+driver       : sha1-generic
+module       : kernel
+priority     : 0
+type         : digest
+blocksize    : 64
+digestsize   : 20
+
++ __________________________/proc/sys/net/core/xfrm-star
+/usr/libexec/ipsec/barf: line 191: __________________________/proc/sys/net/core/xfrm-star: No such file or directory
++ for i in '/proc/sys/net/core/xfrm_*'
++ echo -n '/proc/sys/net/core/xfrm_acq_expires: '
+/proc/sys/net/core/xfrm_acq_expires: + cat /proc/sys/net/core/xfrm_acq_expires
+30
++ for i in '/proc/sys/net/core/xfrm_*'
++ echo -n '/proc/sys/net/core/xfrm_aevent_etime: '
+/proc/sys/net/core/xfrm_aevent_etime: + cat /proc/sys/net/core/xfrm_aevent_etime
+10
++ for i in '/proc/sys/net/core/xfrm_*'
++ echo -n '/proc/sys/net/core/xfrm_aevent_rseqth: '
+/proc/sys/net/core/xfrm_aevent_rseqth: + cat /proc/sys/net/core/xfrm_aevent_rseqth
+2
++ for i in '/proc/sys/net/core/xfrm_*'
++ echo -n '/proc/sys/net/core/xfrm_larval_drop: '
+/proc/sys/net/core/xfrm_larval_drop: + cat /proc/sys/net/core/xfrm_larval_drop
+0
++ _________________________ /proc/sys/net/ipsec-star
++ test -d /proc/sys/net/ipsec
++ _________________________ ipsec/status
++ ipsec auto --status
+000 using kernel interface: netkey
+000 interface eth0/eth0 3ffe:300:10:3:216:3eff:fe07:c90b
+000 interface eth0/eth0 2001:db8:1:0:216:3eff:fe07:c90b
+000 interface lo/lo ::1
+000 interface lo/lo 127.0.0.1
+000 interface lo/lo 127.0.0.1
+000 interface eth0/eth0 10.0.19.2
+000 interface eth0/eth0 10.0.19.2
+000 interface eth1/eth1 192.168.18.2
+000 interface eth1/eth1 192.168.18.2
+000 interface eth1/eth1 192.168.17.3
+000 interface eth1/eth1 192.168.17.3
+000 %myid = (none)
+000 debug none
+000 
+000 algorithm ESP encrypt: id=2, name=ESP_DES, ivlen=8, keysizemin=64, keysizemax=64
+000 algorithm ESP encrypt: id=3, name=ESP_3DES, ivlen=8, keysizemin=192, keysizemax=192
+000 algorithm ESP encrypt: id=6, name=ESP_CAST, ivlen=8, keysizemin=40, keysizemax=128
+000 algorithm ESP encrypt: id=7, name=ESP_BLOWFISH, ivlen=8, keysizemin=40, keysizemax=448
+000 algorithm ESP encrypt: id=11, name=ESP_NULL, ivlen=0, keysizemin=0, keysizemax=0
+000 algorithm ESP encrypt: id=12, name=ESP_AES, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=13, name=ESP_AES_CTR, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=14, name=ESP_AES_CCM_A, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=15, name=ESP_AES_CCM_B, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=16, name=ESP_AES_CCM_C, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=18, name=ESP_AES_GCM_A, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=19, name=ESP_AES_GCM_B, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=20, name=ESP_AES_GCM_C, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=252, name=ESP_SERPENT, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=253, name=ESP_TWOFISH, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP auth attr: id=1, name=AUTH_ALGORITHM_HMAC_MD5, keysizemin=128, keysizemax=128
+000 algorithm ESP auth attr: id=2, name=AUTH_ALGORITHM_HMAC_SHA1, keysizemin=160, keysizemax=160
+000 algorithm ESP auth attr: id=5, name=AUTH_ALGORITHM_HMAC_SHA2_256, keysizemin=256, keysizemax=256
+000 algorithm ESP auth attr: id=8, name=AUTH_ALGORITHM_HMAC_RIPEMD, keysizemin=160, keysizemax=160
+000 algorithm ESP auth attr: id=9, name=AUTH_ALGORITHM_AES_CBC, keysizemin=128, keysizemax=128
+000 algorithm ESP auth attr: id=251, name=(null), keysizemin=0, keysizemax=0
+000 
+000 algorithm IKE encrypt: id=0, name=(null), blocksize=16, keydeflen=131
+000 algorithm IKE encrypt: id=3, name=OAKLEY_BLOWFISH_CBC, blocksize=8, keydeflen=128
+000 algorithm IKE encrypt: id=5, name=OAKLEY_3DES_CBC, blocksize=8, keydeflen=192
+000 algorithm IKE encrypt: id=7, name=OAKLEY_AES_CBC, blocksize=16, keydeflen=128
+000 algorithm IKE encrypt: id=65004, name=OAKLEY_SERPENT_CBC, blocksize=16, keydeflen=128
+000 algorithm IKE encrypt: id=65005, name=OAKLEY_TWOFISH_CBC, blocksize=16, keydeflen=128
+000 algorithm IKE encrypt: id=65289, name=OAKLEY_TWOFISH_CBC_SSH, blocksize=16, keydeflen=128
+000 algorithm IKE hash: id=1, name=OAKLEY_MD5, hashsize=16
+000 algorithm IKE hash: id=2, name=OAKLEY_SHA1, hashsize=20
+000 algorithm IKE hash: id=4, name=OAKLEY_SHA2_256, hashsize=32
+000 algorithm IKE hash: id=6, name=OAKLEY_SHA2_512, hashsize=64
+000 algorithm IKE dh group: id=2, name=OAKLEY_GROUP_MODP1024, bits=1024
+000 algorithm IKE dh group: id=5, name=OAKLEY_GROUP_MODP1536, bits=1536
+000 algorithm IKE dh group: id=14, name=OAKLEY_GROUP_MODP2048, bits=2048
+000 algorithm IKE dh group: id=15, name=OAKLEY_GROUP_MODP3072, bits=3072
+000 algorithm IKE dh group: id=16, name=OAKLEY_GROUP_MODP4096, bits=4096
+000 algorithm IKE dh group: id=17, name=OAKLEY_GROUP_MODP6144, bits=6144
+000 algorithm IKE dh group: id=18, name=OAKLEY_GROUP_MODP8192, bits=8192
+000 
+000 stats db_ops: {curr_cnt, total_cnt, maxsz} :context={0,0,0} trans={0,0,0} attrs={0,0,0}
+000 
+000 "road": 192.168.17.3/32===192.168.18.2<192.168.18.2>[+S=C]...192.168.18.1<192.168.18.1>[+S=C]===192.168.17.0/24; erouted; eroute owner: #2
+000 "road":     myip=192.168.17.3; hisip=unset;
+000 "road":   ike_life: 3600s; ipsec_life: 28800s; rekey_margin: 540s; rekey_fuzz: 100%; keyingtries: 3
+000 "road":   policy: RSASIG+ENCRYPT+TUNNEL+PFS+UP+IKEv2ALLOW; prio: 32,24; interface: eth1;
+000 "road":   newest ISAKMP SA: #1; newest IPsec SA: #2;
+000 "road":   IKE algorithm newest: AES_CBC_128-SHA1-MODP2048
+000 
+000 #2: "road":500 STATE_QUICK_I2 (sent QI2, IPsec SA established); EVENT_SA_REPLACE in 26274s; newest IPSEC; eroute owner; isakmp#1; idle; import:admin initiate
+000 #2: "road" esp.a2c3fa57@192.168.18.1 esp.a41731ab@192.168.18.2 tun.0@192.168.18.1 tun.0@192.168.18.2 ref=0 refhim=4294901761
+000 #1: "road":500 STATE_MAIN_I4 (ISAKMP SA established); EVENT_SA_REPLACE in 1468s; newest ISAKMP; lastdpd=-1s(seq in:0 out:0); idle; import:admin initiate
+000 
++ _________________________ ifconfig-a
++ ifconfig -a
+eth0      Link encap:Ethernet  HWaddr 00:16:3E:07:C9:0B 
+          inet addr:10.0.19.2  Bcast:10.0.255.255  Mask:255.255.0.0
+          inet6 addr: 3ffe:300:10:3:216:3eff:fe07:c90b/64 Scope:Global
+          inet6 addr: 2001:db8:1:0:216:3eff:fe07:c90b/64 Scope:Global
+          inet6 addr: fe80::216:3eff:fe07:c90b/64 Scope:Link
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:35826 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:4692 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000
+          RX bytes:3538128 (3.3 MiB)  TX bytes:646153 (631.0 KiB)
+
+eth1      Link encap:Ethernet  HWaddr 00:16:3E:5A:2C:BF 
+          inet addr:192.168.18.2  Bcast:192.168.18.255  Mask:255.255.255.0
+          inet6 addr: fe80::216:3eff:fe5a:2cbf/64 Scope:Link
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:1503 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:2555 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000
+          RX bytes:208438 (203.5 KiB)  TX bytes:444414 (433.9 KiB)
+
+lo        Link encap:Local Loopback 
+          inet addr:127.0.0.1  Mask:255.0.0.0
+          inet6 addr: ::1/128 Scope:Host
+          UP LOOPBACK RUNNING  MTU:16436  Metric:1
+          RX packets:174 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:174 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0
+          RX bytes:23488 (22.9 KiB)  TX bytes:23488 (22.9 KiB)
+
+sit0      Link encap:IPv6-in-IPv4 
+          NOARP  MTU:1480  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0
+          RX bytes:0 (0.0 b)  TX bytes:0 (0.0 b)
+
++ _________________________ ip-addr-list
++ ip addr list
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 16436 qdisc noqueue
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+    inet6 ::1/128 scope host
+       valid_lft forever preferred_lft forever
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast qlen 1000
+    link/ether 00:16:3e:07:c9:0b brd ff:ff:ff:ff:ff:ff
+    inet 10.0.19.2/16 brd 10.0.255.255 scope global eth0
+    inet6 3ffe:300:10:3:216:3eff:fe07:c90b/64 scope global dynamic
+       valid_lft 2591988sec preferred_lft 604788sec
+    inet6 2001:db8:1:0:216:3eff:fe07:c90b/64 scope global dynamic
+       valid_lft 2591967sec preferred_lft 604767sec
+    inet6 fe80::216:3eff:fe07:c90b/64 scope link
+       valid_lft forever preferred_lft forever
+3: eth1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast qlen 1000
+    link/ether 00:16:3e:5a:2c:bf brd ff:ff:ff:ff:ff:ff
+    inet 192.168.18.2/24 brd 192.168.18.255 scope global eth1
+    inet 192.168.17.3/32 scope global eth1
+    inet6 fe80::216:3eff:fe5a:2cbf/64 scope link
+       valid_lft forever preferred_lft forever
+4: sit0: <NOARP> mtu 1480 qdisc noop
+    link/sit 0.0.0.0 brd 0.0.0.0
++ _________________________ ip-route-list
++ ip route list
+192.168.18.0/24 dev eth1  proto kernel  scope link  src 192.168.18.2
+192.168.17.0/24 dev eth1  scope link  src 192.168.17.3
+10.0.0.0/16 dev eth0  proto kernel  scope link  src 10.0.19.2
+169.254.0.0/16 dev eth0  scope link
+default via 10.0.0.1 dev eth0
++ _________________________ ip-rule-list
++ ip rule list
+0:    from all lookup 255
+32766:    from all lookup main
+32767:    from all lookup default
++ _________________________ ipsec_verify
++ ipsec verify --nocolour
+Checking your system to see if IPsec got installed and started correctly:
+Version check and ipsec on-path                                 [OK]
+Linux Openswan U2.6.14/K2.6.18-128.7.1.el5xen (netkey)
+Checking for IPsec support in kernel                            [OK]
+NETKEY detected, testing for disabled ICMP send_redirects       [FAILED]
+
+  Please disable /proc/sys/net/ipv4/conf/*/send_redirects
+  or NETKEY will cause the sending of bogus ICMP redirects!
+
+NETKEY detected, testing for disabled ICMP accept_redirects     [FAILED]
+
+  Please disable /proc/sys/net/ipv4/conf/*/accept_redirects
+  or NETKEY will accept bogus ICMP redirects!
+
+Checking for RSA private key (/etc/ipsec.secrets)               [OK]
+Checking that pluto is running                                  [OK]
+Two or more interfaces found, checking IP forwarding            [FAILED]
+Checking for 'ip' command                                       [OK]
+Checking for 'iptables' command                                 [OK]
+
+Opportunistic Encryption DNS checks:
+   Looking for TXT in forward dns zone: localhost.localdomain    [MISSING]
+   Does the machine have at least one non-private address?      [FAILED]
++ _________________________ mii-tool
++ '[' -x /sbin/mii-tool ']'
++ /sbin/mii-tool -v
+SIOCGMIIPHY on 'eth0' failed: Operation not supported
+SIOCGMIIPHY on 'eth1' failed: Operation not supported
+no MII interfaces found
++ _________________________ ipsec/directory
++ ipsec --directory
+/usr/libexec/ipsec
++ _________________________ hostname/fqdn
++ hostname --fqdn
+localhost.localdomain
++ _________________________ hostname/ipaddress
++ hostname --ip-address
+127.0.0.1
++ _________________________ uptime
++ uptime
+01:11:40 up 10 days, 12:45,  1 user,  load average: 0.00, 0.00, 0.00
++ _________________________ ps
++ ps alxwf
++ egrep -i 'ppid|pluto|ipsec|klips'
+F   UID   PID  PPID PRI  NI    VSZ   RSS WCHAN  STAT TTY        TIME COMMAND
+0     0 17175 15644  25   0  63876  1208 wait   S+   pts/0      0:00          \_ /bin/sh /usr/libexec/ipsec/barf
+0     0 17263 17175  25   0   6016   592 pipe_w S+   pts/0      0:00              \_ egrep -i ppid|pluto|ipsec|klips
+1     0 17110     1  25   0   8696   476 wait   S    pts/0      0:00 /bin/sh /usr/libexec/ipsec/_plutorun --debug  --uniqueids no --force_busy no --nocrsend no --strictcrlpolicy  --nat_traversal yes --keep_alive  --protostack netkey --force_keepalive  --disable_port_floating  --virtual_private  --crlcheckinterval 0 --ocspuri  --nhelpers  --dump  --opts  --stderrlog  --wait no --pre  --post  --log daemon.error --plutorestartoncrash false --pid /var/run/pluto/pluto.pid
+1     0 17111 17110  25   0   8696   596 wait   S    pts/0      0:00  \_ /bin/sh /usr/libexec/ipsec/_plutorun --debug  --uniqueids no --force_busy no --nocrsend no --strictcrlpolicy  --nat_traversal yes --keep_alive  --protostack netkey --force_keepalive  --disable_port_floating  --virtual_private  --crlcheckinterval 0 --ocspuri  --nhelpers  --dump  --opts  --stderrlog  --wait no --pre  --post  --log daemon.error --plutorestartoncrash false --pid /var/run/pluto/pluto.pid
+4     0 17112 17111  15   0   9364  1612 -      S    pts/0      0:00  |   \_ /usr/libexec/ipsec/pluto --nofork --secretsfile /etc/ipsec.secrets --use-netkey --nat_traversal
+1     0 17123 17112  25  10   9360   764 -      SN   pts/0      0:00  |       \_ pluto helper  #  0                                                                             
+0     0 17138 17112  25   0   5784   356 -      S    pts/0      0:00  |       \_ _pluto_adns
+0     0 17113 17110  25   0   8696  1032 pipe_w S    pts/0      0:00  \_ /bin/sh /usr/libexec/ipsec/_plutoload --wait no --post
+0     0 17114     1  24   0   3780   536 pipe_w S    pts/0      0:00 logger -s -p daemon.error -t ipsec__plutorun
++ _________________________ ipsec/showdefaults
++ ipsec showdefaults
+ipsec showdefaults: cannot find defaults file `/var/run/pluto/ipsec.info'
++ _________________________ ipsec/conf
++ ipsec _include /etc/ipsec.conf
++ ipsec _keycensor
+
+#< /etc/ipsec.conf 1
+# /etc/ipsec.conf - Openswan IPsec configuration file
+#
+# Manual:     ipsec.conf.5
+#
+# Please place your own config files in /etc/ipsec.d/ ending in .conf
+
+version    2.0    # conforms to second version of ipsec.conf specification
+
+# basic configuration
+config setup
+    # Debug-logging controls:  "none" for (almost) none, "all" for lots.
+    # klipsdebug=none
+    # plutodebug="control parsing"
+    # For Red Hat Enterprise Linux and Fedora, leave protostack=netkey
+    protostack=netkey
+    nat_traversal=yes
+
+
+#< /etc/ipsec.d/rw.conf 1
+conn road
+   left=192.168.18.2
+   leftid=192.168.18.2
+   leftsourceip=192.168.17.3
+   leftrsasigkey=[keyid AQNrIBvtu]
+   right=192.168.18.1
+   rightsubnet=192.168.17.0/24
+   rightid=192.168.18.1
+   rightrsasigkey=[keyid AQOBwn/0S]
+   auto=add
+
+#> /etc/ipsec.conf 19
++ _________________________ ipsec/secrets
++ ipsec _include /etc/ipsec.secrets
++ ipsec _secretcensor
+
+#< /etc/ipsec.secrets 1
+
+#< /etc/ipsec.d/gw-rw.secrets 1
+: RSA    {
+    # RSA 512 bits   localhost.localdomain   Thu Nov 12 23:33:00 2009
+    # for signatures only, UNSAFE FOR ENCRYPTION
+    #pubkey=[keyid AQNrIBvtu]
+    Modulus: [...]
+    PublicExponent: [...]
+    # everything after this point is secret
+    PrivateExponent: [...]
+    Prime1: [...]
+    Prime2: [...]
+    Exponent1: [...]
+    Exponent2: [...]
+    Coefficient: [...]
+    }
+# do not change the indenting of that "[sums to 7d9d...]"
+
+#> /etc/ipsec.secrets 2
++ _________________________ ipsec/listall
++ ipsec auto --listall
+000 
+000 List of Public Keys:
+000 
+000 Nov 13 00:46:04 2009,  512 RSA Key AQOBwn/0S (no private key), until --- -- --:--:-- ---- ok (expires never)
+000        ID_IPV4_ADDR '192.168.18.1'
+000 Nov 13 00:46:04 2009,  512 RSA Key AQNrIBvtu (has private key), until --- -- --:--:-- ---- ok (expires never)
+000        ID_IPV4_ADDR '192.168.18.2'
+000 List of Pre-shared secrets (from /etc/ipsec.secrets)
+000     1: RSA (none) (none)
++ '[' /etc/ipsec.d/policies ']'
++ for policy in '$POLICIES/*'
+++ basename /etc/ipsec.d/policies/block
++ base=block
++ _________________________ ipsec/policies/block
++ cat /etc/ipsec.d/policies/block
+# This file defines the set of CIDRs (network/mask-length) to which
+# communication should never be allowed.
+#
+# See /usr/share/doc/openswan/policygroups.html for details.
+#
+# $Id: block.in,v 1.4 2003/02/17 02:22:15 mcr Exp $
+#
+
++ for policy in '$POLICIES/*'
+++ basename /etc/ipsec.d/policies/clear
++ base=clear
++ _________________________ ipsec/policies/clear
++ cat /etc/ipsec.d/policies/clear
+# This file defines the set of CIDRs (network/mask-length) to which
+# communication should always be in the clear.
+#
+# See /usr/share/doc/openswan/policygroups.html for details.
+#
+
+# root name servers should be in the clear
+192.58.128.30/32
+198.41.0.4/32
+192.228.79.201/32
+192.33.4.12/32
+128.8.10.90/32
+192.203.230.10/32
+192.5.5.241/32
+192.112.36.4/32
+128.63.2.53/32
+192.36.148.17/32
+193.0.14.129/32
+199.7.83.42/32
+202.12.27.33/32
++ for policy in '$POLICIES/*'
+++ basename /etc/ipsec.d/policies/clear-or-private
++ base=clear-or-private
++ _________________________ ipsec/policies/clear-or-private
++ cat /etc/ipsec.d/policies/clear-or-private
+# This file defines the set of CIDRs (network/mask-length) to which
+# we will communicate in the clear, or, if the other side initiates IPSEC,
+# using encryption.  This behaviour is also called "Opportunistic Responder".
+#
+# See /usr/share/doc/openswan/policygroups.html for details.
+#
+# $Id: clear-or-private.in,v 1.4 2003/02/17 02:22:15 mcr Exp $
+#
++ for policy in '$POLICIES/*'
+++ basename /etc/ipsec.d/policies/private
++ base=private
++ _________________________ ipsec/policies/private
++ cat /etc/ipsec.d/policies/private
+# This file defines the set of CIDRs (network/mask-length) to which
+# communication should always be private (i.e. encrypted).
+# See /usr/share/doc/openswan/policygroups.html for details.
+#
+# $Id: private.in,v 1.4 2003/02/17 02:22:15 mcr Exp $
+#
++ for policy in '$POLICIES/*'
+++ basename /etc/ipsec.d/policies/private-or-clear
++ base=private-or-clear
++ _________________________ ipsec/policies/private-or-clear
++ cat /etc/ipsec.d/policies/private-or-clear
+# This file defines the set of CIDRs (network/mask-length) to which
+# communication should be private, if possible, but in the clear otherwise.
+#
+# If the target has a TXT (later IPSECKEY) record that specifies
+# authentication material, we will require private (i.e. encrypted)
+# communications.  If no such record is found, communications will be
+# in the clear.
+#
+# See /usr/share/doc/openswan/policygroups.html for details.
+#
+# $Id: private-or-clear.in,v 1.5 2003/02/17 02:22:15 mcr Exp $
+#
+
+0.0.0.0/0
++ _________________________ ipsec/ls-libdir
++ ls -l /usr/libexec/ipsec
+total 2332
+-rwxr-xr-x 1 root root   7576 Jul  3 01:04 _copyright
+-rwxr-xr-x 1 root root   2379 Jul  3 01:04 _include
+-rwxr-xr-x 1 root root   1475 Jul  3 01:04 _keycensor
+-rwxr-xr-x 1 root root  11640 Jul  3 01:04 _pluto_adns
+-rwxr-xr-x 1 root root   2632 Jul  3 01:04 _plutoload
+-rwxr-xr-x 1 root root   7602 Jul  3 01:04 _plutorun
+-rwxr-xr-x 1 root root  13746 Jul  3 01:04 _realsetup
+-rwxr-xr-x 1 root root   1975 Jul  3 01:04 _secretcensor
+-rwxr-xr-x 1 root root   9752 Jul  3 01:04 _startklips
+-rwxr-xr-x 1 root root   9752 Jul  3 01:04 _startklips.old
+-rwxr-xr-x 1 root root   4988 Jul  3 01:04 _startnetkey
+-rwxr-xr-x 1 root root   4949 Jul  3 01:04 _updown
+-rwxr-xr-x 1 root root  14030 Jul  3 01:04 _updown.klips
+-rwxr-xr-x 1 root root  14030 Jul  3 01:04 _updown.klips.old
+-rwxr-xr-x 1 root root  13739 Jul  3 01:04 _updown.mast
+-rwxr-xr-x 1 root root  13739 Jul  3 01:04 _updown.mast.old
+-rwxr-xr-x 1 root root   8337 Jul  3 01:04 _updown.netkey
+-rwxr-xr-x 1 root root 207240 Jul  3 01:04 addconn
+-rwxr-xr-x 1 root root   6129 Jul  3 01:04 auto
+-rwxr-xr-x 1 root root  10758 Jul  3 01:04 barf
+-rwxr-xr-x 1 root root  91752 Jul  3 01:04 eroute
+-rwxr-xr-x 1 root root  22136 Jul  3 01:04 ikeping
+-rwxr-xr-x 1 root root  69096 Jul  3 01:04 klipsdebug
+-rwxr-xr-x 1 root root   1868 Jul  3 01:04 livetest
+-rwxr-xr-x 1 root root   2591 Jul  3 01:04 look
+-rwxr-xr-x 1 root root   1921 Jul  3 01:04 newhostkey
+-rwxr-xr-x 1 root root  62536 Jul  3 01:04 pf_key
+-rwxr-xr-x 1 root root 958760 Jul  3 01:04 pluto
+-rwxr-xr-x 1 root root  11304 Jul  3 01:04 ranbits
+-rwxr-xr-x 1 root root  24200 Jul  3 01:04 rsasigkey
+-rwxr-xr-x 1 root root    766 Jul  3 01:04 secrets
+lrwxrwxrwx 1 root root     30 Aug 25 09:30 setup -> ../../../etc/rc.d/init.d/ipsec
+-rwxr-xr-x 1 root root   1054 Jul  3 01:04 showdefaults
+-rwxr-xr-x 1 root root 232792 Jul  3 01:04 showhostkey
+-rwxr-xr-x 1 root root  24136 Jul  3 01:04 showpolicy
+-rwxr-xr-x 1 root root 164032 Jul  3 01:04 spi
+-rwxr-xr-x 1 root root  79064 Jul  3 01:04 spigrp
+-rwxr-xr-x 1 root root  75136 Jul  3 01:04 tncfg
+-rwxr-xr-x 1 root root  12526 Jul  3 01:04 verify
+-rwxr-xr-x 1 root root  57528 Jul  3 01:04 whack
++ _________________________ ipsec/ls-execdir
++ ls -l /usr/libexec/ipsec
+total 2332
+-rwxr-xr-x 1 root root   7576 Jul  3 01:04 _copyright
+-rwxr-xr-x 1 root root   2379 Jul  3 01:04 _include
+-rwxr-xr-x 1 root root   1475 Jul  3 01:04 _keycensor
+-rwxr-xr-x 1 root root  11640 Jul  3 01:04 _pluto_adns
+-rwxr-xr-x 1 root root   2632 Jul  3 01:04 _plutoload
+-rwxr-xr-x 1 root root   7602 Jul  3 01:04 _plutorun
+-rwxr-xr-x 1 root root  13746 Jul  3 01:04 _realsetup
+-rwxr-xr-x 1 root root   1975 Jul  3 01:04 _secretcensor
+-rwxr-xr-x 1 root root   9752 Jul  3 01:04 _startklips
+-rwxr-xr-x 1 root root   9752 Jul  3 01:04 _startklips.old
+-rwxr-xr-x 1 root root   4988 Jul  3 01:04 _startnetkey
+-rwxr-xr-x 1 root root   4949 Jul  3 01:04 _updown
+-rwxr-xr-x 1 root root  14030 Jul  3 01:04 _updown.klips
+-rwxr-xr-x 1 root root  14030 Jul  3 01:04 _updown.klips.old
+-rwxr-xr-x 1 root root  13739 Jul  3 01:04 _updown.mast
+-rwxr-xr-x 1 root root  13739 Jul  3 01:04 _updown.mast.old
+-rwxr-xr-x 1 root root   8337 Jul  3 01:04 _updown.netkey
+-rwxr-xr-x 1 root root 207240 Jul  3 01:04 addconn
+-rwxr-xr-x 1 root root   6129 Jul  3 01:04 auto
+-rwxr-xr-x 1 root root  10758 Jul  3 01:04 barf
+-rwxr-xr-x 1 root root  91752 Jul  3 01:04 eroute
+-rwxr-xr-x 1 root root  22136 Jul  3 01:04 ikeping
+-rwxr-xr-x 1 root root  69096 Jul  3 01:04 klipsdebug
+-rwxr-xr-x 1 root root   1868 Jul  3 01:04 livetest
+-rwxr-xr-x 1 root root   2591 Jul  3 01:04 look
+-rwxr-xr-x 1 root root   1921 Jul  3 01:04 newhostkey
+-rwxr-xr-x 1 root root  62536 Jul  3 01:04 pf_key
+-rwxr-xr-x 1 root root 958760 Jul  3 01:04 pluto
+-rwxr-xr-x 1 root root  11304 Jul  3 01:04 ranbits
+-rwxr-xr-x 1 root root  24200 Jul  3 01:04 rsasigkey
+-rwxr-xr-x 1 root root    766 Jul  3 01:04 secrets
+lrwxrwxrwx 1 root root     30 Aug 25 09:30 setup -> ../../../etc/rc.d/init.d/ipsec
+-rwxr-xr-x 1 root root   1054 Jul  3 01:04 showdefaults
+-rwxr-xr-x 1 root root 232792 Jul  3 01:04 showhostkey
+-rwxr-xr-x 1 root root  24136 Jul  3 01:04 showpolicy
+-rwxr-xr-x 1 root root 164032 Jul  3 01:04 spi
+-rwxr-xr-x 1 root root  79064 Jul  3 01:04 spigrp
+-rwxr-xr-x 1 root root  75136 Jul  3 01:04 tncfg
+-rwxr-xr-x 1 root root  12526 Jul  3 01:04 verify
+-rwxr-xr-x 1 root root  57528 Jul  3 01:04 whack
++ _________________________ /proc/net/dev
++ cat /proc/net/dev
+Inter-|   Receive                                                |  Transmit
+face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+    lo:   23488     174    0    0    0     0          0         0    23488     174    0    0    0     0       0          0
+  eth0: 3538550   35829    0    0    0     0          0         0   646315    4694    0    0    0     0       0          0
+  eth1:  208438    1503    0    0    0     0          0         0   444414    2555    0    0    0     0       0          0
+  sit0:       0       0    0    0    0     0          0         0        0       0    0    0    0     0       0          0
++ _________________________ /proc/net/route
++ cat /proc/net/route
+Iface    Destination    Gateway     Flags    RefCnt    Use    Metric    Mask        MTU    Window    IRTT                                                       
+eth1    0012A8C0    00000000    0001    0    0    0    00FFFFFF    0    0    0                                                                               
+eth1    0011A8C0    00000000    0001    0    0    0    00FFFFFF    0    0    0                                                                               
+eth0    0000000A    00000000    0001    0    0    0    0000FFFF    0    0    0                                                                               
+eth0    0000FEA9    00000000    0001    0    0    0    0000FFFF    0    0    0                                                                               
+eth0    00000000    0100000A    0003    0    0    0    00000000    0    0    0                                                                               
++ _________________________ /proc/sys/net/ipv4/ip_no_pmtu_disc
++ cat /proc/sys/net/ipv4/ip_no_pmtu_disc
+0
++ _________________________ /proc/sys/net/ipv4/ip_forward
++ cat /proc/sys/net/ipv4/ip_forward
+0
++ _________________________ /proc/sys/net/ipv4/tcp_ecn
++ cat /proc/sys/net/ipv4/tcp_ecn
+0
++ _________________________ /proc/sys/net/ipv4/conf/star-rp_filter
++ cd /proc/sys/net/ipv4/conf
++ egrep '^' all/rp_filter default/rp_filter eth0/rp_filter eth1/rp_filter lo/rp_filter
+all/rp_filter:0
+default/rp_filter:1
+eth0/rp_filter:1
+eth1/rp_filter:1
+lo/rp_filter:0
++ _________________________ /proc/sys/net/ipv4/conf/star-star-redirects
++ cd /proc/sys/net/ipv4/conf
++ egrep '^' all/accept_redirects all/secure_redirects all/send_redirects default/accept_redirects default/secure_redirects default/send_redirects eth0/accept_redirects eth0/secure_redirects eth0/send_redirects eth1/accept_redirects eth1/secure_redirects eth1/send_redirects lo/accept_redirects lo/secure_redirects lo/send_redirects
+all/accept_redirects:1
+all/secure_redirects:1
+all/send_redirects:1
+default/accept_redirects:1
+default/secure_redirects:1
+default/send_redirects:1
+eth0/accept_redirects:1
+eth0/secure_redirects:1
+eth0/send_redirects:1
+eth1/accept_redirects:1
+eth1/secure_redirects:1
+eth1/send_redirects:1
+lo/accept_redirects:1
+lo/secure_redirects:1
+lo/send_redirects:1
++ _________________________ /proc/sys/net/ipv4/tcp_window_scaling
++ cat /proc/sys/net/ipv4/tcp_window_scaling
+1
++ _________________________ /proc/sys/net/ipv4/tcp_adv_win_scale
++ cat /proc/sys/net/ipv4/tcp_adv_win_scale
+2
++ _________________________ uname-a
++ uname -a
+Linux localhost.localdomain 2.6.18-128.7.1.el5xen #1 SMP Mon Aug 24 09:14:33 EDT 2009 x86_64 x86_64 x86_64 GNU/Linux
++ _________________________ config-built-with
++ test -r /proc/config_built_with
++ _________________________ distro-release
++ for distro in /etc/redhat-release /etc/debian-release /etc/SuSE-release /etc/mandrake-release /etc/mandriva-release /etc/gentoo-release
++ test -f /etc/redhat-release
++ cat /etc/redhat-release
+CentOS release 5.3 (Final)
++ for distro in /etc/redhat-release /etc/debian-release /etc/SuSE-release /etc/mandrake-release /etc/mandriva-release /etc/gentoo-release
++ test -f /etc/debian-release
++ for distro in /etc/redhat-release /etc/debian-release /etc/SuSE-release /etc/mandrake-release /etc/mandriva-release /etc/gentoo-release
++ test -f /etc/SuSE-release
++ for distro in /etc/redhat-release /etc/debian-release /etc/SuSE-release /etc/mandrake-release /etc/mandriva-release /etc/gentoo-release
++ test -f /etc/mandrake-release
++ for distro in /etc/redhat-release /etc/debian-release /etc/SuSE-release /etc/mandrake-release /etc/mandriva-release /etc/gentoo-release
++ test -f /etc/mandriva-release
++ for distro in /etc/redhat-release /etc/debian-release /etc/SuSE-release /etc/mandrake-release /etc/mandriva-release /etc/gentoo-release
++ test -f /etc/gentoo-release
++ _________________________ /proc/net/ipsec_version
++ test -r /proc/net/ipsec_version
++ test -r /proc/net/pfkey
+++ uname -r
++ echo 'NETKEY (2.6.18-128.7.1.el5xen) support detected '
+NETKEY (2.6.18-128.7.1.el5xen) support detected
++ _________________________ iptables
++ test -r /sbin/iptables
++ iptables -L -v -n
+Chain INPUT (policy ACCEPT 0 packets, 0 bytes)
+pkts bytes target     prot opt in     out     source               destination         
+185K  210M RH-Firewall-1-INPUT  all  --  *      *       0.0.0.0/0            0.0.0.0/0           
+
+Chain FORWARD (policy ACCEPT 0 packets, 0 bytes)
+pkts bytes target     prot opt in     out     source               destination         
+    0     0 RH-Firewall-1-INPUT  all  --  *      *       0.0.0.0/0            0.0.0.0/0           
+
+Chain OUTPUT (policy ACCEPT 103K packets, 8053K bytes)
+pkts bytes target     prot opt in     out     source               destination         
+
+Chain RH-Firewall-1-INPUT (2 references)
+pkts bytes target     prot opt in     out     source               destination         
+   41  3416 ACCEPT     all  --  lo     *       0.0.0.0/0            0.0.0.0/0           
+  493 41412 ACCEPT     icmp --  *      *       0.0.0.0/0            0.0.0.0/0           icmp type 255
+  464 70576 ACCEPT     esp  --  *      *       0.0.0.0/0            0.0.0.0/0           
+    0     0 ACCEPT     ah   --  *      *       0.0.0.0/0            0.0.0.0/0           
+    0     0 ACCEPT     udp  --  *      *       0.0.0.0/0            224.0.0.251         udp dpt:5353
+    0     0 ACCEPT     udp  --  *      *       0.0.0.0/0            0.0.0.0/0           udp dpt:631
+    0     0 ACCEPT     tcp  --  *      *       0.0.0.0/0            0.0.0.0/0           tcp dpt:631
+170K  208M ACCEPT     all  --  *      *       0.0.0.0/0            0.0.0.0/0           state RELATED,ESTABLISHED
+   20  1064 ACCEPT     tcp  --  *      *       0.0.0.0/0            0.0.0.0/0           state NEW tcp dpt:22
+14311 2528K REJECT     all  --  *      *       0.0.0.0/0            0.0.0.0/0           reject-with icmp-host-prohibited
++ _________________________ iptables-nat
++ iptables -t nat -L -v -n
+Chain PREROUTING (policy ACCEPT 0 packets, 0 bytes)
+pkts bytes target     prot opt in     out     source               destination         
+
+Chain POSTROUTING (policy ACCEPT 0 packets, 0 bytes)
+pkts bytes target     prot opt in     out     source               destination         
+
+Chain OUTPUT (policy ACCEPT 0 packets, 0 bytes)
+pkts bytes target     prot opt in     out     source               destination         
++ _________________________ iptables-mangle
++ iptables -t mangle -L -v -n
+Chain PREROUTING (policy ACCEPT 0 packets, 0 bytes)
+pkts bytes target     prot opt in     out     source               destination         
+
+Chain INPUT (policy ACCEPT 0 packets, 0 bytes)
+pkts bytes target     prot opt in     out     source               destination         
+
+Chain FORWARD (policy ACCEPT 0 packets, 0 bytes)
+pkts bytes target     prot opt in     out     source               destination         
+
+Chain OUTPUT (policy ACCEPT 0 packets, 0 bytes)
+pkts bytes target     prot opt in     out     source               destination         
+
+Chain POSTROUTING (policy ACCEPT 0 packets, 0 bytes)
+pkts bytes target     prot opt in     out     source               destination         
++ _________________________ /proc/modules
++ test -f /proc/modules
++ cat /proc/modules
+iptable_mangle 36033 0 - Live 0xffffffff88530000
+iptable_nat 40773 0 - Live 0xffffffff88525000
+ip_nat 52973 1 iptable_nat, Live 0xffffffff88517000
+ipcomp6 41677 0 - Live 0xffffffff883c6000
+ipcomp 41165 0 - Live 0xffffffff883ba000
+ah6 39745 0 - Live 0xffffffff883af000
+ah4 39617 0 - Live 0xffffffff883a4000
+esp6 41921 0 - Live 0xffffffff88398000
+esp4 42049 2 - Live 0xffffffff88381000
+xfrm4_tunnel 35649 0 - Live 0xffffffff88351000
+xfrm4_mode_tunnel 35777 2 - Live 0xffffffff8833d000
+xfrm4_mode_transport 35137 0 - Live 0xffffffff88333000
+xfrm6_mode_transport 35265 0 - Live 0xffffffff88329000
+xfrm6_mode_tunnel 35649 0 - Live 0xffffffff8831f000
+af_key 101333 0 - Live 0xffffffff882ef000
+krng 35137 1 - Live 0xffffffff8850d000
+ansi_cprng 38725 0 - Live 0xffffffff88502000
+chainiv 38465 2 - Live 0xffffffff884f7000
+rng 36941 3 krng,ansi_cprng,chainiv, Live 0xffffffff884ec000
+authenc 39745 2 - Live 0xffffffff884e1000
+hmac 37953 2 - Live 0xffffffff884d6000
+cryptomgr 36929 0 - Live 0xffffffff884cb000
+xfrm6_tunnel 42593 1 ipcomp6, Live 0xffffffff88313000
+deflate 37057 0 - Live 0xffffffff884c0000
+zlib_deflate 52825 1 deflate, Live 0xffffffff884b2000
+ccm 43201 0 - Live 0xffffffff884a6000
+serpent 51905 0 - Live 0xffffffff88498000
+blowfish 41921 0 - Live 0xffffffff8848c000
+twofish 74945 0 - Live 0xffffffff88478000
+ecb 36673 0 - Live 0xffffffff8846e000
+xcbc 39105 0 - Live 0xffffffff88463000
+crypto_hash 35393 2 hmac,xcbc, Live 0xffffffff88459000
+cbc 37441 2 - Live 0xffffffff8844e000
+md5 37313 0 - Live 0xffffffff88443000
+sha256 41793 0 - Live 0xffffffff88437000
+sha512 38209 0 - Live 0xffffffff8842c000
+des 49729 0 - Live 0xffffffff8841e000
+aes_generic 59393 0 - Live 0xffffffff8840e000
+testmgr_cipher 35905 0 - Live 0xffffffff88404000
+testmgr 79473 1 testmgr_cipher, Live 0xffffffff883ef000
+crypto_blkcipher 48449 6 chainiv,authenc,ccm,ecb,cbc,testmgr, Live 0xffffffff883e2000
+aes_x86_64 58601 2 - Live 0xffffffff883d2000
+xfrm6_esp 39105 1 esp6, Live 0xffffffff8838d000
+xfrm4_esp 39233 1 esp4, Live 0xffffffff88376000
+aead 42049 5 esp6,esp4,authenc,ccm,testmgr, Live 0xffffffff8836a000
+crypto_algapi 54721 13 krng,ansi_cprng,chainiv,authenc,hmac,cryptomgr,ccm,ecb,xcbc,cbc,testmgr,crypto_blkcipher,aead, Live 0xffffffff8835b000
+tunnel4 36552 1 xfrm4_tunnel, Live 0xffffffff88347000
+tunnel6 36681 1 xfrm6_tunnel, Live 0xffffffff88309000
+sunrpc 197513 1 - Live 0xffffffff882bd000
+ip_conntrack_netbios_ns 36033 0 - Live 0xffffffff882b3000
+ipt_REJECT 38849 1 - Live 0xffffffff882a8000
+xt_state 35265 2 - Live 0xffffffff8829e000
+ip_conntrack 91237 4 iptable_nat,ip_nat,ip_conntrack_netbios_ns,xt_state, Live 0xffffffff88286000
+nfnetlink 40457 2 ip_nat,ip_conntrack, Live 0xffffffff8827b000
+iptable_filter 36161 1 - Live 0xffffffff88271000
+ip_tables 55201 3 iptable_mangle,iptable_nat,iptable_filter, Live 0xffffffff88262000
+ip6t_REJECT 38849 1 - Live 0xffffffff88257000
+xt_tcpudp 36289 10 - Live 0xffffffff8824d000
+ip6table_filter 36033 1 - Live 0xffffffff88243000
+ip6_tables 50049 1 ip6table_filter, Live 0xffffffff88235000
+x_tables 50377 7 iptable_nat,ipt_REJECT,xt_state,ip_tables,ip6t_REJECT,xt_tcpudp,ip6_tables, Live 0xffffffff88227000
+ipv6 424737 26 ipcomp6,ah6,esp6,xfrm6_mode_transport,xfrm6_tunnel,xfrm6_esp,tunnel6,ip6t_REJECT, Live 0xffffffff881be000
+xfrm_nalgo 43333 7 ah6,ah4,esp6,esp4,xfrm6_esp,xfrm4_esp,ipv6, Live 0xffffffff881b2000
+crypto_api 42945 12 ah6,ah4,esp6,esp4,rng,authenc,ccm,testmgr,crypto_blkcipher,aead,crypto_algapi,xfrm_nalgo, Live 0xffffffff881a6000
+dm_multipath 55257 0 - Live 0xffffffff88197000
+scsi_dh 41665 1 dm_multipath, Live 0xffffffff8818b000
+scsi_mod 197337 1 scsi_dh, Live 0xffffffff88159000
+parport_pc 62313 0 - Live 0xffffffff88148000
+lp 47121 0 - Live 0xffffffff8813b000
+parport 73293 2 parport_pc,lp, Live 0xffffffff88128000
+pcspkr 36289 0 - Live 0xffffffff8811e000
+xennet 61129 0 [permanent], Live 0xffffffff8810c000
+dm_raid45 98897 0 - Live 0xffffffff880f2000
+dm_message 36289 1 dm_raid45, Live 0xffffffff880e8000
+dm_region_hash 46401 1 dm_raid45, Live 0xffffffff880db000
+dm_mem_cache 39617 1 dm_raid45, Live 0xffffffff880d0000
+dm_snapshot 51593 0 - Live 0xffffffff880c2000
+dm_zero 35265 0 - Live 0xffffffff880b8000
+dm_mirror 54345 0 - Live 0xffffffff880a9000
+dm_log 44993 3 dm_raid45,dm_region_hash,dm_mirror, Live 0xffffffff8809d000
+dm_mod 100753 11 dm_multipath,dm_raid45,dm_snapshot,dm_zero,dm_mirror,dm_log, Live 0xffffffff88083000
+xenblk 50729 3 - Live 0xffffffff88075000
+ext3 168273 2 - Live 0xffffffff8804a000
+jbd 94257 1 ext3, Live 0xffffffff88031000
+uhci_hcd 57561 0 - Live 0xffffffff88021000
+ohci_hcd 56053 0 - Live 0xffffffff88012000
+ehci_hcd 65869 0 - Live 0xffffffff88000000
++ _________________________ /proc/meminfo
++ cat /proc/meminfo
+MemTotal:       262144 kB
+MemFree:         24112 kB
+Buffers:         38792 kB
+Cached:         133360 kB
+SwapCached:          0 kB
+Active:         140708 kB
+Inactive:        42448 kB
+HighTotal:           0 kB
+HighFree:            0 kB
+LowTotal:       262144 kB
+LowFree:         24112 kB
+SwapTotal:      622584 kB
+SwapFree:       622548 kB
+Dirty:              20 kB
+Writeback:           0 kB
+AnonPages:       11012 kB
+Mapped:           6364 kB
+Slab:            24716 kB
+PageTables:       2096 kB
+NFS_Unstable:        0 kB
+Bounce:              0 kB
+CommitLimit:    753656 kB
+Committed_AS:    23524 kB
+VmallocTotal: 34359738367 kB
+VmallocUsed:       540 kB
+VmallocChunk: 34359737819 kB
++ _________________________ /proc/net/ipsec-ls
++ test -f /proc/net/ipsec_version
++ _________________________ usr/src/linux/.config
++ test -f /proc/config.gz
+++ uname -r
++ test -f /lib/modules/2.6.18-128.7.1.el5xen/build/.config
++ echo 'no .config file found, cannot list kernel properties'
+no .config file found, cannot list kernel properties
++ _________________________ etc/syslog.conf
++ _________________________ etc/syslog-ng/syslog-ng.conf
++ cat /etc/syslog-ng/syslog-ng.conf
+cat: /etc/syslog-ng/syslog-ng.conf: No such file or directory
++ cat /etc/syslog.conf
+# Log all kernel messages to the console.
+# Logging much else clutters up the screen.
+#kern.*                            /dev/console
+
+# Log anything (except mail) of level info or higher.
+# Don't log private authentication messages!
+*.info;mail.none;authpriv.none;cron.none        /var/log/messages
+
+# The authpriv file has restricted access.
+authpriv.*                        /var/log/secure
+
+# Log all the mail messages in one place.
+mail.*                            -/var/log/maillog
+
+
+# Log cron stuff
+cron.*                            /var/log/cron
+
+# Everybody gets emergency messages
+*.emerg                            *
+
+# Save news errors of level crit and higher in a special file.
+uucp,news.crit                        /var/log/spooler
+
+# Save boot messages also to boot.log
+local7.*                        /var/log/boot.log
++ _________________________ etc/resolv.conf
++ cat /etc/resolv.conf
+; generated by /sbin/dhclient-script
+search localfarm
+nameserver 130.233.40.5
+nameserver 130.233.192.1
+nameserver 130.233.224.1
++ _________________________ lib/modules-ls
++ ls -ltr /lib/modules
+total 4
+drwxr-xr-x 6 root root 4096 Aug 25 08:32 2.6.18-128.7.1.el5xen
++ _________________________ /proc/ksyms-netif_rx
++ test -r /proc/ksyms
++ test -r /proc/kallsyms
++ egrep netif_rx /proc/kallsyms
+ffffffff8024f9ef T netif_rx_ni
+ffffffff804101a4 T __netif_rx_schedule
+ffffffff80410686 T netif_rx
+ffffffff80410686 U netif_rx    [xfrm6_esp]
+ffffffff80410686 U netif_rx    [xfrm4_esp]
+ffffffff80410686 U netif_rx    [ipv6]
+ffffffff804101a4 U __netif_rx_schedule    [xennet]
++ _________________________ lib/modules-netif_rx
++ modulegoo kernel/net/ipv4/ipip.o netif_rx
++ set +x
+2.6.18-128.7.1.el5xen:
++ _________________________ kern.debug
++ test -f /var/log/kern.debug
++ _________________________ klog
++ sed -n '323,$p' /var/log/messages
++ egrep -i 'ipsec|klips|pluto'
++ case "$1" in
++ cat
+Nov 13 00:46:04 localhost ipsec_setup: Starting Openswan IPsec U2.6.14/K2.6.18-128.7.1.el5xen...
+Nov 13 00:46:04 localhost ipsec_setup:
+Nov 13 00:46:04 localhost ipsec_setup:
+Nov 13 00:46:04 localhost ipsec_setup: defaulting leftsubnet to 192.168.17.3
+Nov 13 00:46:04 localhost ipsec_starter[17122]: defaulting leftsubnet to 192.168.17.3
+Nov 13 00:46:04 localhost ipsec__plutorun: defaulting leftsubnet to 192.168.17.3
+Nov 13 00:46:04 localhost ipsec_starter[17132]: defaulting leftsubnet to 192.168.17.3
+Nov 13 00:46:04 localhost ipsec_starter[17133]: defaulting leftsubnet to 192.168.17.3
+Nov 13 00:46:04 localhost ipsec__plutorun: defaulting leftsubnet to 192.168.17.3
+Nov 13 00:46:04 localhost ipsec__plutorun: defaulting leftsubnet to 192.168.17.3
+Nov 13 00:46:04 localhost ipsec__plutorun: 002 added connection description "road"
++ _________________________ plog
++ sed -n '2470,$p' /var/log/secure
++ egrep -i pluto
++ case "$1" in
++ cat
+Nov 13 00:46:04 localhost ipsec__plutorun: Starting Pluto subsystem...
+Nov 13 00:46:04 localhost pluto[17112]: Starting Pluto (Openswan Version 2.6.14; Vendor ID OEoSJUweaqAX) pid:17112
+Nov 13 00:46:04 localhost pluto[17112]: Setting NAT-Traversal port-4500 floating to on
+Nov 13 00:46:04 localhost pluto[17112]:    port floating activation criteria nat_t=1/port_float=1
+Nov 13 00:46:04 localhost pluto[17112]:    including NAT-Traversal patch (Version 0.6c)
+Nov 13 00:46:04 localhost pluto[17112]: using /dev/urandom as source of random entropy
+Nov 13 00:46:04 localhost pluto[17112]: ike_alg_register_enc(): Activating OAKLEY_TWOFISH_CBC_SSH: Ok (ret=0)
+Nov 13 00:46:04 localhost pluto[17112]: ike_alg_register_enc(): Activating OAKLEY_TWOFISH_CBC: Ok (ret=0)
+Nov 13 00:46:04 localhost pluto[17112]: ike_alg_register_enc(): Activating OAKLEY_SERPENT_CBC: Ok (ret=0)
+Nov 13 00:46:04 localhost pluto[17112]: ike_alg_register_enc(): Activating OAKLEY_AES_CBC: Ok (ret=0)
+Nov 13 00:46:04 localhost pluto[17112]: ike_alg_register_enc(): Activating OAKLEY_BLOWFISH_CBC: Ok (ret=0)
+Nov 13 00:46:04 localhost pluto[17112]: ike_alg_register_hash(): Activating OAKLEY_SHA2_512: Ok (ret=0)
+Nov 13 00:46:04 localhost pluto[17112]: ike_alg_register_hash(): Activating OAKLEY_SHA2_256: Ok (ret=0)
+Nov 13 00:46:04 localhost pluto[17112]: starting up 1 cryptographic helpers
+Nov 13 00:46:04 localhost pluto[17123]: using /dev/urandom as source of random entropy
+Nov 13 00:46:04 localhost pluto[17112]: started helper pid=17123 (fd:7)
+Nov 13 00:46:04 localhost pluto[17112]: Using Linux 2.6 IPsec interface code on 2.6.18-128.7.1.el5xen (experimental code)
+Nov 13 00:46:04 localhost pluto[17112]: ike_alg_register_enc(): WARNING: enc alg=0 not found in constants.c:oakley_enc_names 
+Nov 13 00:46:04 localhost pluto[17112]: ike_alg_register_enc(): Activating <NULL>: Ok (ret=0)
+Nov 13 00:46:04 localhost pluto[17112]: ike_alg_register_enc(): WARNING: enc alg=0 not found in constants.c:oakley_enc_names 
+Nov 13 00:46:04 localhost pluto[17112]: ike_alg_add(): ERROR: Algorithm already exists
+Nov 13 00:46:04 localhost pluto[17112]: ike_alg_register_enc(): Activating <NULL>: FAILED (ret=-17)
+Nov 13 00:46:04 localhost pluto[17112]: ike_alg_register_enc(): WARNING: enc alg=0 not found in constants.c:oakley_enc_names 
+Nov 13 00:46:04 localhost pluto[17112]: ike_alg_add(): ERROR: Algorithm already exists
+Nov 13 00:46:04 localhost pluto[17112]: ike_alg_register_enc(): Activating <NULL>: FAILED (ret=-17)
+Nov 13 00:46:04 localhost pluto[17112]: ike_alg_register_enc(): WARNING: enc alg=0 not found in constants.c:oakley_enc_names 
+Nov 13 00:46:04 localhost pluto[17112]: ike_alg_add(): ERROR: Algorithm already exists
+Nov 13 00:46:04 localhost pluto[17112]: ike_alg_register_enc(): Activating <NULL>: FAILED (ret=-17)
+Nov 13 00:46:04 localhost pluto[17112]: ike_alg_register_enc(): WARNING: enc alg=0 not found in constants.c:oakley_enc_names 
+Nov 13 00:46:04 localhost pluto[17112]: ike_alg_add(): ERROR: Algorithm already exists
+Nov 13 00:46:04 localhost pluto[17112]: ike_alg_register_enc(): Activating <NULL>: FAILED (ret=-17)
+Nov 13 00:46:04 localhost pluto[17112]: ike_alg_register_enc(): WARNING: enc alg=0 not found in constants.c:oakley_enc_names 
+Nov 13 00:46:04 localhost pluto[17112]: ike_alg_add(): ERROR: Algorithm already exists
+Nov 13 00:46:04 localhost pluto[17112]: ike_alg_register_enc(): Activating <NULL>: FAILED (ret=-17)
+Nov 13 00:46:04 localhost pluto[17112]: Could not change to directory '/etc/ipsec.d/cacerts': /root
+Nov 13 00:46:04 localhost pluto[17112]: Could not change to directory '/etc/ipsec.d/aacerts': /root
+Nov 13 00:46:04 localhost pluto[17112]: Could not change to directory '/etc/ipsec.d/ocspcerts': /root
+Nov 13 00:46:04 localhost pluto[17112]: Could not change to directory '/etc/ipsec.d/crls'
+Nov 13 00:46:04 localhost pluto[17112]: Changing back to directory '/root' failed - (2 No such file or directory)
+Nov 13 00:46:04 localhost pluto[17112]: Changing back to directory '/root' failed - (2 No such file or directory)
+Nov 13 00:46:04 localhost pluto[17112]: added connection description "road"
+Nov 13 00:46:04 localhost pluto[17112]: listening for IKE messages
+Nov 13 00:46:04 localhost pluto[17112]: adding interface eth1/eth1 192.168.17.3:500
+Nov 13 00:46:04 localhost pluto[17112]: adding interface eth1/eth1 192.168.17.3:4500
+Nov 13 00:46:04 localhost pluto[17112]: adding interface eth1/eth1 192.168.18.2:500
+Nov 13 00:46:04 localhost pluto[17112]: adding interface eth1/eth1 192.168.18.2:4500
+Nov 13 00:46:04 localhost pluto[17112]: adding interface eth0/eth0 10.0.19.2:500
+Nov 13 00:46:04 localhost pluto[17112]: adding interface eth0/eth0 10.0.19.2:4500
+Nov 13 00:46:04 localhost pluto[17112]: adding interface lo/lo 127.0.0.1:500
+Nov 13 00:46:04 localhost pluto[17112]: adding interface lo/lo 127.0.0.1:4500
+Nov 13 00:46:04 localhost pluto[17112]: adding interface lo/lo ::1:500
+Nov 13 00:46:04 localhost pluto[17112]: adding interface eth0/eth0 2001:db8:1:0:216:3eff:fe07:c90b:500
+Nov 13 00:46:04 localhost pluto[17112]: adding interface eth0/eth0 3ffe:300:10:3:216:3eff:fe07:c90b:500
+Nov 13 00:46:04 localhost pluto[17112]: loading secrets from "/etc/ipsec.secrets"
+Nov 13 00:46:04 localhost pluto[17112]: loading secrets from "/etc/ipsec.d/gw-rw.secrets"
+Nov 13 00:46:04 localhost pluto[17112]: loaded private key for keyid: PPK_RSA:AQNrIBvtu
+Nov 13 00:46:10 localhost pluto[17112]: "road" #1: initiating Main Mode
+Nov 13 00:46:10 localhost pluto[17112]: "road" #1: received Vendor ID payload [Openswan (this version) 2.6.14 ]
+Nov 13 00:46:10 localhost pluto[17112]: "road" #1: received Vendor ID payload [Dead Peer Detection]
+Nov 13 00:46:10 localhost pluto[17112]: "road" #1: received Vendor ID payload [RFC 3947] method set to=109
+Nov 13 00:46:10 localhost pluto[17112]: "road" #1: enabling possible NAT-traversal with method 4
+Nov 13 00:46:10 localhost pluto[17112]: "road" #1: transition from state STATE_MAIN_I1 to state STATE_MAIN_I2
+Nov 13 00:46:10 localhost pluto[17112]: "road" #1: STATE_MAIN_I2: sent MI2, expecting MR2
+Nov 13 00:46:10 localhost pluto[17112]: "road" #1: NAT-Traversal: Result using RFC 3947 (NAT-Traversal): no NAT detected
+Nov 13 00:46:10 localhost pluto[17112]: "road" #1: transition from state STATE_MAIN_I2 to state STATE_MAIN_I3
+Nov 13 00:46:10 localhost pluto[17112]: "road" #1: STATE_MAIN_I3: sent MI3, expecting MR3
+Nov 13 00:46:10 localhost pluto[17112]: "road" #1: received Vendor ID payload [CAN-IKEv2]
+Nov 13 00:46:10 localhost pluto[17112]: "road" #1: Main mode peer ID is ID_IPV4_ADDR: '192.168.18.1'
+Nov 13 00:46:10 localhost pluto[17112]: "road" #1: transition from state STATE_MAIN_I3 to state STATE_MAIN_I4
+Nov 13 00:46:10 localhost pluto[17112]: "road" #1: STATE_MAIN_I4: ISAKMP SA established {auth=OAKLEY_RSA_SIG cipher=aes_128 prf=oakley_sha group=modp2048}
+Nov 13 00:46:10 localhost pluto[17112]: "road" #1: alloc_bytes1() was mistakenly asked to malloc 0 bytes for st_skey_ar in duplicate_state, please report to dev@openswan.org
+Nov 13 00:46:10 localhost pluto[17112]: "road" #1: alloc_bytes1() was mistakenly asked to malloc 0 bytes for st_skey_er in duplicate_state, please report to dev@openswan.org
+Nov 13 00:46:10 localhost pluto[17112]: "road" #1: alloc_bytes1() was mistakenly asked to malloc 0 bytes for st_skey_pi in duplicate_state, please report to dev@openswan.org
+Nov 13 00:46:10 localhost pluto[17112]: "road" #1: alloc_bytes1() was mistakenly asked to malloc 0 bytes for st_skey_pr in duplicate_state, please report to dev@openswan.org
+Nov 13 00:46:10 localhost pluto[17112]: "road" #2: initiating Quick Mode RSASIG+ENCRYPT+TUNNEL+PFS+UP+IKEv2ALLOW {using isakmp#1 msgid:ee72a0e5 proposal=defaults pfsgroup=OAKLEY_GROUP_MODP2048}
+Nov 13 00:46:10 localhost pluto[17112]: "road" #2: transition from state STATE_QUICK_I1 to state STATE_QUICK_I2
+Nov 13 00:46:10 localhost pluto[17112]: "road" #2: STATE_QUICK_I2: sent QI2, IPsec SA established tunnel mode {ESP=>0xa2c3fa57 <0xa41731ab xfrm=AES_128-HMAC_SHA1 NATOA=none NATD=none DPD=none}
++ _________________________ date
++ date
+Fri Nov 13 01:11:40 EET 2009
+
+=============================================================================================================================
+=============================================================================================================================
+
+	
+    "ipsec barf" command output at GW:
+
+localhost.localdomain
+Fri Nov 13 01:11:01 EET 2009
++ _________________________ version
++ ipsec --version
+Linux Openswan U2.6.14/K2.6.18-128.7.1.el5xen (netkey)
+See `ipsec --copyright' for copyright information.
++ _________________________ /proc/version
++ cat /proc/version
+Linux version 2.6.18-128.7.1.el5xen (mockbuild@builder10.centos.org) (gcc version 4.1.2 20080704 (Red Hat 4.1.2-44)) #1 SMP Mon Aug 24 09:14:33 EDT 2009
++ _________________________ /proc/net/ipsec_eroute
++ test -r /proc/net/ipsec_eroute
++ _________________________ netstat-rn
++ netstat -nr
++ head -n 100
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags   MSS Window  irtt Iface
+192.168.17.3    0.0.0.0         255.255.255.255 UH        0 0          0 lo
+192.168.18.0    0.0.0.0         255.255.255.0   U         0 0          0 eth1
+192.168.17.0    0.0.0.0         255.255.255.0   U         0 0          0 eth2
+10.0.0.0        0.0.0.0         255.255.0.0     U         0 0          0 eth0
+169.254.0.0     0.0.0.0         255.255.0.0     U         0 0          0 eth0
+0.0.0.0         10.0.0.1        0.0.0.0         UG        0 0          0 eth0
++ _________________________ /proc/net/ipsec_spi
++ test -r /proc/net/ipsec_spi
++ _________________________ /proc/net/ipsec_spigrp
++ test -r /proc/net/ipsec_spigrp
++ _________________________ /proc/net/ipsec_tncfg
++ test -r /proc/net/ipsec_tncfg
++ _________________________ /proc/net/pfkey
++ test -r /proc/net/pfkey
++ cat /proc/net/pfkey
+sk       RefCnt Rmem   Wmem   User   Inode
++ _________________________ ip-xfrm-state
++ ip xfrm state
+src 192.168.18.2 dst 192.168.18.1
+    proto esp spi 0xa2c3fa57 reqid 16393 mode tunnel
+    replay-window 32
+    auth hmac(sha1) 0xee1034dca31a97a37147debafe65a04b4396f013
+    enc cbc(aes) 0x7743aa0f6a88907f3cfa708e42386f45
+src 192.168.18.1 dst 192.168.18.2
+    proto esp spi 0xa41731ab reqid 16393 mode tunnel
+    replay-window 32
+    auth hmac(sha1) 0x4b592bbafc2e79b51089af000eaec0aa1dab3f06
+    enc cbc(aes) 0x734d06cc434a888977ed405dc9ca5a34
++ _________________________ ip-xfrm-policy
++ ip xfrm policy
+src 192.168.17.3/32 dst 192.168.17.0/24
+    dir in priority 2336
+    tmpl src 192.168.18.2 dst 192.168.18.1
+        proto esp reqid 16393 mode tunnel
+src 192.168.17.0/24 dst 192.168.17.3/32
+    dir out priority 2336
+    tmpl src 192.168.18.1 dst 192.168.18.2
+        proto esp reqid 16393 mode tunnel
+src 192.168.17.3/32 dst 192.168.17.0/24
+    dir fwd priority 2336
+    tmpl src 192.168.18.2 dst 192.168.18.1
+        proto esp reqid 16393 mode tunnel
+src ::/0 dst ::/0
+    dir in priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir in priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir in priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir in priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir in priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir in priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir in priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir in priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir in priority 0
+src ::/0 dst ::/0
+    dir out priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir out priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir out priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir out priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir out priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir out priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir out priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir out priority 0
+src 0.0.0.0/0 dst 0.0.0.0/0
+    dir out priority 0
++ _________________________ /proc/crypto
++ test -r /proc/crypto
++ cat /proc/crypto
+name         : deflate
+driver       : deflate-generic
+module       : deflate
+priority     : 0
+type         : compression
+
+name         : tnepres
+driver       : tnepres-generic
+module       : serpent
+priority     : 0
+type         : cipher
+blocksize    : 16
+min keysize  : 0
+max keysize  : 32
+
+name         : serpent
+driver       : serpent-generic
+module       : serpent
+priority     : 0
+type         : cipher
+blocksize    : 16
+min keysize  : 0
+max keysize  : 32
+
+name         : blowfish
+driver       : blowfish-generic
+module       : blowfish
+priority     : 0
+type         : cipher
+blocksize    : 8
+min keysize  : 4
+max keysize  : 56
+
+name         : twofish
+driver       : twofish-generic
+module       : twofish
+priority     : 0
+type         : cipher
+blocksize    : 16
+min keysize  : 16
+max keysize  : 32
+
+name         : md5
+driver       : md5-generic
+module       : md5
+priority     : 0
+type         : digest
+blocksize    : 64
+digestsize   : 16
+
+name         : sha256
+driver       : sha256-generic
+module       : sha256
+priority     : 0
+type         : digest
+blocksize    : 64
+digestsize   : 32
+
+name         : sha512
+driver       : sha512-generic
+module       : sha512
+priority     : 0
+type         : digest
+blocksize    : 128
+digestsize   : 64
+
+name         : sha384
+driver       : sha384-generic
+module       : sha512
+priority     : 0
+type         : digest
+blocksize    : 96
+digestsize   : 48
+
+name         : des3_ede
+driver       : des3_ede-generic
+module       : des
+priority     : 0
+type         : cipher
+blocksize    : 8
+min keysize  : 24
+max keysize  : 24
+
+name         : des
+driver       : des-generic
+module       : des
+priority     : 0
+type         : cipher
+blocksize    : 8
+min keysize  : 8
+max keysize  : 8
+
+name         : aes
+driver       : aes-generic
+module       : aes_generic
+priority     : 100
+type         : cipher
+blocksize    : 16
+min keysize  : 16
+max keysize  : 32
+
+name         : aes
+driver       : aes-x86_64
+module       : aes_x86_64
+priority     : 200
+type         : cipher
+blocksize    : 16
+min keysize  : 16
+max keysize  : 32
+
+name         : crc32c
+driver       : crc32c-generic
+module       : kernel
+priority     : 0
+type         : digest
+blocksize    : 32
+digestsize   : 4
+
+name         : sha1
+driver       : sha1-generic
+module       : kernel
+priority     : 0
+type         : digest
+blocksize    : 64
+digestsize   : 20
+
++ __________________________/proc/sys/net/core/xfrm-star
+/usr/libexec/ipsec/barf: line 191: __________________________/proc/sys/net/core/xfrm-star: No such file or directory
++ for i in '/proc/sys/net/core/xfrm_*'
++ echo -n '/proc/sys/net/core/xfrm_acq_expires: '
+/proc/sys/net/core/xfrm_acq_expires: + cat /proc/sys/net/core/xfrm_acq_expires
+30
++ for i in '/proc/sys/net/core/xfrm_*'
++ echo -n '/proc/sys/net/core/xfrm_aevent_etime: '
+/proc/sys/net/core/xfrm_aevent_etime: + cat /proc/sys/net/core/xfrm_aevent_etime
+10
++ for i in '/proc/sys/net/core/xfrm_*'
++ echo -n '/proc/sys/net/core/xfrm_aevent_rseqth: '
+/proc/sys/net/core/xfrm_aevent_rseqth: + cat /proc/sys/net/core/xfrm_aevent_rseqth
+2
++ for i in '/proc/sys/net/core/xfrm_*'
++ echo -n '/proc/sys/net/core/xfrm_larval_drop: '
+/proc/sys/net/core/xfrm_larval_drop: + cat /proc/sys/net/core/xfrm_larval_drop
+0
++ _________________________ /proc/sys/net/ipsec-star
++ test -d /proc/sys/net/ipsec
++ _________________________ ipsec/status
++ ipsec auto --status
+000 using kernel interface: netkey
+000 interface lo/lo ::1
+000 interface lo/lo 127.0.0.1
+000 interface lo/lo 127.0.0.1
+000 interface eth0/eth0 10.0.19.1
+000 interface eth0/eth0 10.0.19.1
+000 interface eth1/eth1 192.168.18.1
+000 interface eth1/eth1 192.168.18.1
+000 interface eth2/eth2 192.168.17.2
+000 interface eth2/eth2 192.168.17.2
+000 %myid = (none)
+000 debug none
+000 
+000 algorithm ESP encrypt: id=2, name=ESP_DES, ivlen=8, keysizemin=64, keysizemax=64
+000 algorithm ESP encrypt: id=3, name=ESP_3DES, ivlen=8, keysizemin=192, keysizemax=192
+000 algorithm ESP encrypt: id=6, name=ESP_CAST, ivlen=8, keysizemin=40, keysizemax=128
+000 algorithm ESP encrypt: id=7, name=ESP_BLOWFISH, ivlen=8, keysizemin=40, keysizemax=448
+000 algorithm ESP encrypt: id=11, name=ESP_NULL, ivlen=0, keysizemin=0, keysizemax=0
+000 algorithm ESP encrypt: id=12, name=ESP_AES, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=13, name=ESP_AES_CTR, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=14, name=ESP_AES_CCM_A, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=15, name=ESP_AES_CCM_B, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=16, name=ESP_AES_CCM_C, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=18, name=ESP_AES_GCM_A, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=19, name=ESP_AES_GCM_B, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=20, name=ESP_AES_GCM_C, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=252, name=ESP_SERPENT, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP encrypt: id=253, name=ESP_TWOFISH, ivlen=8, keysizemin=128, keysizemax=256
+000 algorithm ESP auth attr: id=1, name=AUTH_ALGORITHM_HMAC_MD5, keysizemin=128, keysizemax=128
+000 algorithm ESP auth attr: id=2, name=AUTH_ALGORITHM_HMAC_SHA1, keysizemin=160, keysizemax=160
+000 algorithm ESP auth attr: id=5, name=AUTH_ALGORITHM_HMAC_SHA2_256, keysizemin=256, keysizemax=256
+000 algorithm ESP auth attr: id=8, name=AUTH_ALGORITHM_HMAC_RIPEMD, keysizemin=160, keysizemax=160
+000 algorithm ESP auth attr: id=9, name=AUTH_ALGORITHM_AES_CBC, keysizemin=128, keysizemax=128
+000 algorithm ESP auth attr: id=251, name=(null), keysizemin=0, keysizemax=0
+000 
+000 algorithm IKE encrypt: id=0, name=(null), blocksize=16, keydeflen=131
+000 algorithm IKE encrypt: id=3, name=OAKLEY_BLOWFISH_CBC, blocksize=8, keydeflen=128
+000 algorithm IKE encrypt: id=5, name=OAKLEY_3DES_CBC, blocksize=8, keydeflen=192
+000 algorithm IKE encrypt: id=7, name=OAKLEY_AES_CBC, blocksize=16, keydeflen=128
+000 algorithm IKE encrypt: id=65004, name=OAKLEY_SERPENT_CBC, blocksize=16, keydeflen=128
+000 algorithm IKE encrypt: id=65005, name=OAKLEY_TWOFISH_CBC, blocksize=16, keydeflen=128
+000 algorithm IKE encrypt: id=65289, name=OAKLEY_TWOFISH_CBC_SSH, blocksize=16, keydeflen=128
+000 algorithm IKE hash: id=1, name=OAKLEY_MD5, hashsize=16
+000 algorithm IKE hash: id=2, name=OAKLEY_SHA1, hashsize=20
+000 algorithm IKE hash: id=4, name=OAKLEY_SHA2_256, hashsize=32
+000 algorithm IKE hash: id=6, name=OAKLEY_SHA2_512, hashsize=64
+000 algorithm IKE dh group: id=2, name=OAKLEY_GROUP_MODP1024, bits=1024
+000 algorithm IKE dh group: id=5, name=OAKLEY_GROUP_MODP1536, bits=1536
+000 algorithm IKE dh group: id=14, name=OAKLEY_GROUP_MODP2048, bits=2048
+000 algorithm IKE dh group: id=15, name=OAKLEY_GROUP_MODP3072, bits=3072
+000 algorithm IKE dh group: id=16, name=OAKLEY_GROUP_MODP4096, bits=4096
+000 algorithm IKE dh group: id=17, name=OAKLEY_GROUP_MODP6144, bits=6144
+000 algorithm IKE dh group: id=18, name=OAKLEY_GROUP_MODP8192, bits=8192
+000 
+000 stats db_ops: {curr_cnt, total_cnt, maxsz} :context={0,0,0} trans={0,0,0} attrs={0,0,0}
+000 
+000 "road": 192.168.17.0/24===192.168.18.1<192.168.18.1>[+S=C]...%any[192.168.18.2,+S=C]===192.168.17.3/32; unrouted; eroute owner: #0
+000 "road":     myip=unset; hisip=192.168.17.3;
+000 "road":   ike_life: 3600s; ipsec_life: 28800s; rekey_margin: 540s; rekey_fuzz: 100%; keyingtries: 3
+000 "road":   policy: RSASIG+ENCRYPT+TUNNEL+PFS+IKEv2ALLOW; prio: 24,32; interface: eth1;
+000 "road":   newest ISAKMP SA: #0; newest IPsec SA: #0;
+000 "road"[2]: 192.168.17.0/24===192.168.18.1<192.168.18.1>[+S=C]...192.168.18.2[+S=C]===192.168.17.3/32; erouted; eroute owner: #4
+000 "road"[2]:     myip=unset; hisip=192.168.17.3;
+000 "road"[2]:   ike_life: 3600s; ipsec_life: 28800s; rekey_margin: 540s; rekey_fuzz: 100%; keyingtries: 3
+000 "road"[2]:   policy: RSASIG+ENCRYPT+TUNNEL+PFS+IKEv2ALLOW; prio: 24,32; interface: eth1;
+000 "road"[2]:   newest ISAKMP SA: #3; newest IPsec SA: #4;
+000 "road"[2]:   IKE algorithm newest: AES_CBC_128-SHA1-MODP2048
+000 
+000 #4: "road"[2] 192.168.18.2:500 STATE_QUICK_R2 (IPsec SA established); EVENT_SA_REPLACE in 27039s; newest IPSEC; eroute owner; isakmp#3; idle; import:not set
+000 #4: "road"[2] 192.168.18.2 esp.a41731ab@192.168.18.2 esp.a2c3fa57@192.168.18.1 tun.0@192.168.18.2 tun.0@192.168.18.1 ref=0 refhim=4294901761
+000 #3: "road"[2] 192.168.18.2:500 STATE_MAIN_R3 (sent MR3, ISAKMP SA established); EVENT_SA_REPLACE in 1839s; newest ISAKMP; lastdpd=-1s(seq in:0 out:0); idle; import:not set
+000 
++ _________________________ ifconfig-a
++ ifconfig -a
+eth0      Link encap:Ethernet  HWaddr 00:16:3E:0E:79:9A 
+          inet addr:10.0.19.1  Bcast:10.0.255.255  Mask:255.255.0.0
+          inet6 addr: fe80::216:3eff:fe0e:799a/64 Scope:Link
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:32679 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:3107 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000
+          RX bytes:3278611 (3.1 MiB)  TX bytes:516142 (504.0 KiB)
+
+eth1      Link encap:Ethernet  HWaddr 00:16:3E:3D:A1:B5 
+          inet addr:192.168.18.1  Bcast:192.168.18.255  Mask:255.255.255.0
+          inet6 addr: fe80::216:3eff:fe3d:a1b5/64 Scope:Link
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:2509 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:1438 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000
+          RX bytes:436950 (426.7 KiB)  TX bytes:204052 (199.2 KiB)
+
+eth2      Link encap:Ethernet  HWaddr 00:16:3E:11:FB:E8 
+          inet addr:192.168.17.2  Bcast:192.168.17.255  Mask:255.255.255.0
+          inet6 addr: fe80::216:3eff:fe11:fbe8/64 Scope:Link
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:1222 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:1378 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000
+          RX bytes:78284 (76.4 KiB)  TX bytes:131712 (128.6 KiB)
+
+lo        Link encap:Local Loopback 
+          inet addr:127.0.0.1  Mask:255.0.0.0
+          inet6 addr: ::1/128 Scope:Host
+          UP LOOPBACK RUNNING  MTU:16436  Metric:1
+          RX packets:124 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:124 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0
+          RX bytes:14216 (13.8 KiB)  TX bytes:14216 (13.8 KiB)
+
+sit0      Link encap:IPv6-in-IPv4 
+          NOARP  MTU:1480  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0
+          RX bytes:0 (0.0 b)  TX bytes:0 (0.0 b)
+
++ _________________________ ip-addr-list
++ ip addr list
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 16436 qdisc noqueue
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+    inet6 ::1/128 scope host
+       valid_lft forever preferred_lft forever
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast qlen 1000
+    link/ether 00:16:3e:0e:79:9a brd ff:ff:ff:ff:ff:ff
+    inet 10.0.19.1/16 brd 10.0.255.255 scope global eth0
+    inet6 fe80::216:3eff:fe0e:799a/64 scope link
+       valid_lft forever preferred_lft forever
+3: eth1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast qlen 1000
+    link/ether 00:16:3e:3d:a1:b5 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.18.1/24 brd 192.168.18.255 scope global eth1
+    inet6 fe80::216:3eff:fe3d:a1b5/64 scope link
+       valid_lft forever preferred_lft forever
+4: eth2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast qlen 1000
+    link/ether 00:16:3e:11:fb:e8 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.17.2/24 brd 192.168.17.255 scope global eth2
+    inet6 fe80::216:3eff:fe11:fbe8/64 scope link
+       valid_lft forever preferred_lft forever
+5: sit0: <NOARP> mtu 1480 qdisc noop
+    link/sit 0.0.0.0 brd 0.0.0.0
++ _________________________ ip-route-list
++ ip route list
+192.168.17.3 dev lo  scope link
+192.168.18.0/24 dev eth1  proto kernel  scope link  src 192.168.18.1
+192.168.17.0/24 dev eth2  proto kernel  scope link  src 192.168.17.2
+10.0.0.0/16 dev eth0  proto kernel  scope link  src 10.0.19.1
+169.254.0.0/16 dev eth0  scope link
+default via 10.0.0.1 dev eth0
++ _________________________ ip-rule-list
++ ip rule list
+0:    from all lookup 255
+32766:    from all lookup main
+32767:    from all lookup default
++ _________________________ ipsec_verify
++ ipsec verify --nocolour
+Checking your system to see if IPsec got installed and started correctly:
+Version check and ipsec on-path                                 [OK]
+Linux Openswan U2.6.14/K2.6.18-128.7.1.el5xen (netkey)
+Checking for IPsec support in kernel                            [OK]
+NETKEY detected, testing for disabled ICMP send_redirects       [FAILED]
+
+  Please disable /proc/sys/net/ipv4/conf/*/send_redirects
+  or NETKEY will cause the sending of bogus ICMP redirects!
+
+NETKEY detected, testing for disabled ICMP accept_redirects     [FAILED]
+
+  Please disable /proc/sys/net/ipv4/conf/*/accept_redirects
+  or NETKEY will accept bogus ICMP redirects!
+
+Checking for RSA private key (/etc/ipsec.secrets)               [OK]
+Checking that pluto is running                                  [OK]
+Two or more interfaces found, checking IP forwarding            [OK]
+Checking NAT and MASQUERADEing                                  [OK]
+Checking for 'ip' command                                       [OK]
+Checking for 'iptables' command                                 [OK]
+
+Opportunistic Encryption DNS checks:
+   Looking for TXT in forward dns zone: localhost.localdomain    [MISSING]
+   Does the machine have at least one non-private address?      [FAILED]
++ _________________________ mii-tool
++ '[' -x /sbin/mii-tool ']'
++ /sbin/mii-tool -v
+SIOCGMIIPHY on 'eth0' failed: Operation not supported
+SIOCGMIIPHY on 'eth1' failed: Operation not supported
+SIOCGMIIPHY on 'eth2' failed: Operation not supported
+no MII interfaces found
++ _________________________ ipsec/directory
++ ipsec --directory
+/usr/libexec/ipsec
++ _________________________ hostname/fqdn
++ hostname --fqdn
+localhost.localdomain
++ _________________________ hostname/ipaddress
++ hostname --ip-address
+127.0.0.1
++ _________________________ uptime
++ uptime
+01:11:01 up 10 days, 12:45,  2 users,  load average: 0.00, 0.00, 0.00
++ _________________________ ps
++ ps alxwf
++ egrep -i 'ppid|pluto|ipsec|klips'
+F   UID   PID  PPID PRI  NI    VSZ   RSS WCHAN  STAT TTY        TIME COMMAND
+0     0 18889 17160  25   0  63876  1212 -      R+   pts/1      0:00          \_ /bin/sh /usr/libexec/ipsec/barf
+1     0 18498     1  25   0   8696   476 wait   S    pts/1      0:00 /bin/sh /usr/libexec/ipsec/_plutorun --debug  --uniqueids no --force_busy no --nocrsend no --strictcrlpolicy  --nat_traversal yes --keep_alive  --protostack netkey --force_keepalive  --disable_port_floating  --virtual_private  --crlcheckinterval 0 --ocspuri  --nhelpers  --dump  --opts  --stderrlog  --wait no --pre  --post  --log daemon.error --plutorestartoncrash false --pid /var/run/pluto/pluto.pid
+1     0 18499 18498  23   0   8696   596 wait   S    pts/1      0:00  \_ /bin/sh /usr/libexec/ipsec/_plutorun --debug  --uniqueids no --force_busy no --nocrsend no --strictcrlpolicy  --nat_traversal yes --keep_alive  --protostack netkey --force_keepalive  --disable_port_floating  --virtual_private  --crlcheckinterval 0 --ocspuri  --nhelpers  --dump  --opts  --stderrlog  --wait no --pre  --post  --log daemon.error --plutorestartoncrash false --pid /var/run/pluto/pluto.pid
+4     0 18500 18499  15   0   9420  1636 -      S    pts/1      0:00  |   \_ /usr/libexec/ipsec/pluto --nofork --secretsfile /etc/ipsec.secrets --use-netkey --nat_traversal
+1     0 18510 18500  25  10   9360   768 -      SN   pts/1      0:00  |       \_ pluto helper  #  0                                                                             
+0     0 18526 18500  25   0   5784   360 -      S    pts/1      0:00  |       \_ _pluto_adns
+0     0 18501 18498  25   0   8696  1036 pipe_w S    pts/1      0:00  \_ /bin/sh /usr/libexec/ipsec/_plutoload --wait no --post
+0     0 18502     1  24   0   3780   536 pipe_w S    pts/1      0:00 logger -s -p daemon.error -t ipsec__plutorun
++ _________________________ ipsec/showdefaults
++ ipsec showdefaults
+ipsec showdefaults: cannot find defaults file `/var/run/pluto/ipsec.info'
++ _________________________ ipsec/conf
++ ipsec _include /etc/ipsec.conf
++ ipsec _keycensor
+
+#< /etc/ipsec.conf 1
+# /etc/ipsec.conf - Openswan IPsec configuration file
+#
+# Manual:     ipsec.conf.5
+#
+# Please place your own config files in /etc/ipsec.d/ ending in .conf
+
+version    2.0    # conforms to second version of ipsec.conf specification
+
+# basic configuration
+config setup
+    # Debug-logging controls:  "none" for (almost) none, "all" for lots.
+    # klipsdebug=none
+    # plutodebug="control parsing"
+    # For Red Hat Enterprise Linux and Fedora, leave protostack=netkey
+    protostack=netkey
+    nat_traversal=yes
+
+
+#< /etc/ipsec.d/gw.conf 1
+conn road
+   left=192.168.18.1
+   leftid=192.168.18.1
+   leftrsasigkey=[keyid AQOBwn/0S]
+   leftsubnet=192.168.17.0/24
+   right=%any
+   rightid=192.168.18.2
+   rightsourceip=192.168.17.3
+   rightrsasigkey=[keyid AQNrIBvtu]
+   auto=add
+
+#> /etc/ipsec.conf 19
++ _________________________ ipsec/secrets
++ ipsec _include /etc/ipsec.secrets
++ ipsec _secretcensor
+
+#< /etc/ipsec.secrets 1
+
+#< /etc/ipsec.d/gw-rw.secrets 1
+: RSA    {
+    # RSA 512 bits   localhost.localdomain   Mon Nov  9 22:50:26 2009
+    # for signatures only, UNSAFE FOR ENCRYPTION
+    #pubkey=[keyid AQOBwn/0S]
+    Modulus: [...]
+    PublicExponent: [...]
+    # everything after this point is secret
+    PrivateExponent: [...]
+    Prime1: [...]
+    Prime2: [...]
+    Exponent1: [...]
+    Exponent2: [...]
+    Coefficient: [...]
+    }
+# do not change the indenting of that "[sums to 7d9d...]"
+
+#> /etc/ipsec.secrets 2
++ _________________________ ipsec/listall
++ ipsec auto --listall
+000 
+000 List of Public Keys:
+000 
+000 Nov 13 00:23:54 2009,  512 RSA Key AQNrIBvtu (no private key), until --- -- --:--:-- ---- ok (expires never)
+000        ID_IPV4_ADDR '192.168.18.2'
+000 Nov 13 00:23:54 2009,  512 RSA Key AQOBwn/0S (has private key), until --- -- --:--:-- ---- ok (expires never)
+000        ID_IPV4_ADDR '192.168.18.1'
+000 List of Pre-shared secrets (from /etc/ipsec.secrets)
+000     1: RSA (none) (none)
++ '[' /etc/ipsec.d/policies ']'
++ for policy in '$POLICIES/*'
+++ basename /etc/ipsec.d/policies/block
++ base=block
++ _________________________ ipsec/policies/block
++ cat /etc/ipsec.d/policies/block
+# This file defines the set of CIDRs (network/mask-length) to which
+# communication should never be allowed.
+#
+# See /usr/share/doc/openswan/policygroups.html for details.
+#
+# $Id: block.in,v 1.4 2003/02/17 02:22:15 mcr Exp $
+#
+
++ for policy in '$POLICIES/*'
+++ basename /etc/ipsec.d/policies/clear
++ base=clear
++ _________________________ ipsec/policies/clear
++ cat /etc/ipsec.d/policies/clear
+# This file defines the set of CIDRs (network/mask-length) to which
+# communication should always be in the clear.
+#
+# See /usr/share/doc/openswan/policygroups.html for details.
+#
+
+# root name servers should be in the clear
+192.58.128.30/32
+198.41.0.4/32
+192.228.79.201/32
+192.33.4.12/32
+128.8.10.90/32
+192.203.230.10/32
+192.5.5.241/32
+192.112.36.4/32
+128.63.2.53/32
+192.36.148.17/32
+193.0.14.129/32
+199.7.83.42/32
+202.12.27.33/32
++ for policy in '$POLICIES/*'
+++ basename /etc/ipsec.d/policies/clear-or-private
++ base=clear-or-private
++ _________________________ ipsec/policies/clear-or-private
++ cat /etc/ipsec.d/policies/clear-or-private
+# This file defines the set of CIDRs (network/mask-length) to which
+# we will communicate in the clear, or, if the other side initiates IPSEC,
+# using encryption.  This behaviour is also called "Opportunistic Responder".
+#
+# See /usr/share/doc/openswan/policygroups.html for details.
+#
+# $Id: clear-or-private.in,v 1.4 2003/02/17 02:22:15 mcr Exp $
+#
++ for policy in '$POLICIES/*'
+++ basename /etc/ipsec.d/policies/private
++ base=private
++ _________________________ ipsec/policies/private
++ cat /etc/ipsec.d/policies/private
+# This file defines the set of CIDRs (network/mask-length) to which
+# communication should always be private (i.e. encrypted).
+# See /usr/share/doc/openswan/policygroups.html for details.
+#
+# $Id: private.in,v 1.4 2003/02/17 02:22:15 mcr Exp $
+#
++ for policy in '$POLICIES/*'
+++ basename /etc/ipsec.d/policies/private-or-clear
++ base=private-or-clear
++ _________________________ ipsec/policies/private-or-clear
++ cat /etc/ipsec.d/policies/private-or-clear
+# This file defines the set of CIDRs (network/mask-length) to which
+# communication should be private, if possible, but in the clear otherwise.
+#
+# If the target has a TXT (later IPSECKEY) record that specifies
+# authentication material, we will require private (i.e. encrypted)
+# communications.  If no such record is found, communications will be
+# in the clear.
+#
+# See /usr/share/doc/openswan/policygroups.html for details.
+#
+# $Id: private-or-clear.in,v 1.5 2003/02/17 02:22:15 mcr Exp $
+#
+
+0.0.0.0/0
++ _________________________ ipsec/ls-libdir
++ ls -l /usr/libexec/ipsec
+total 2332
+-rwxr-xr-x 1 root root   7576 Jul  3 01:04 _copyright
+-rwxr-xr-x 1 root root   2379 Jul  3 01:04 _include
+-rwxr-xr-x 1 root root   1475 Jul  3 01:04 _keycensor
+-rwxr-xr-x 1 root root  11640 Jul  3 01:04 _pluto_adns
+-rwxr-xr-x 1 root root   2632 Jul  3 01:04 _plutoload
+-rwxr-xr-x 1 root root   7602 Jul  3 01:04 _plutorun
+-rwxr-xr-x 1 root root  13746 Jul  3 01:04 _realsetup
+-rwxr-xr-x 1 root root   1975 Jul  3 01:04 _secretcensor
+-rwxr-xr-x 1 root root   9752 Jul  3 01:04 _startklips
+-rwxr-xr-x 1 root root   9752 Jul  3 01:04 _startklips.old
+-rwxr-xr-x 1 root root   4988 Jul  3 01:04 _startnetkey
+-rwxr-xr-x 1 root root   4949 Jul  3 01:04 _updown
+-rwxr-xr-x 1 root root  14030 Jul  3 01:04 _updown.klips
+-rwxr-xr-x 1 root root  14030 Jul  3 01:04 _updown.klips.old
+-rwxr-xr-x 1 root root  13739 Jul  3 01:04 _updown.mast
+-rwxr-xr-x 1 root root  13739 Jul  3 01:04 _updown.mast.old
+-rwxr-xr-x 1 root root   8337 Jul  3 01:04 _updown.netkey
+-rwxr-xr-x 1 root root 207240 Jul  3 01:04 addconn
+-rwxr-xr-x 1 root root   6129 Jul  3 01:04 auto
+-rwxr-xr-x 1 root root  10758 Jul  3 01:04 barf
+-rwxr-xr-x 1 root root  91752 Jul  3 01:04 eroute
+-rwxr-xr-x 1 root root  22136 Jul  3 01:04 ikeping
+-rwxr-xr-x 1 root root  69096 Jul  3 01:04 klipsdebug
+-rwxr-xr-x 1 root root   1868 Jul  3 01:04 livetest
+-rwxr-xr-x 1 root root   2591 Jul  3 01:04 look
+-rwxr-xr-x 1 root root   1921 Jul  3 01:04 newhostkey
+-rwxr-xr-x 1 root root  62536 Jul  3 01:04 pf_key
+-rwxr-xr-x 1 root root 958760 Jul  3 01:04 pluto
+-rwxr-xr-x 1 root root  11304 Jul  3 01:04 ranbits
+-rwxr-xr-x 1 root root  24200 Jul  3 01:04 rsasigkey
+-rwxr-xr-x 1 root root    766 Jul  3 01:04 secrets
+lrwxrwxrwx 1 root root     30 Aug 25 09:30 setup -> ../../../etc/rc.d/init.d/ipsec
+-rwxr-xr-x 1 root root   1054 Jul  3 01:04 showdefaults
+-rwxr-xr-x 1 root root 232792 Jul  3 01:04 showhostkey
+-rwxr-xr-x 1 root root  24136 Jul  3 01:04 showpolicy
+-rwxr-xr-x 1 root root 164032 Jul  3 01:04 spi
+-rwxr-xr-x 1 root root  79064 Jul  3 01:04 spigrp
+-rwxr-xr-x 1 root root  75136 Jul  3 01:04 tncfg
+-rwxr-xr-x 1 root root  12526 Jul  3 01:04 verify
+-rwxr-xr-x 1 root root  57528 Jul  3 01:04 whack
++ _________________________ ipsec/ls-execdir
++ ls -l /usr/libexec/ipsec
+total 2332
+-rwxr-xr-x 1 root root   7576 Jul  3 01:04 _copyright
+-rwxr-xr-x 1 root root   2379 Jul  3 01:04 _include
+-rwxr-xr-x 1 root root   1475 Jul  3 01:04 _keycensor
+-rwxr-xr-x 1 root root  11640 Jul  3 01:04 _pluto_adns
+-rwxr-xr-x 1 root root   2632 Jul  3 01:04 _plutoload
+-rwxr-xr-x 1 root root   7602 Jul  3 01:04 _plutorun
+-rwxr-xr-x 1 root root  13746 Jul  3 01:04 _realsetup
+-rwxr-xr-x 1 root root   1975 Jul  3 01:04 _secretcensor
+-rwxr-xr-x 1 root root   9752 Jul  3 01:04 _startklips
+-rwxr-xr-x 1 root root   9752 Jul  3 01:04 _startklips.old
+-rwxr-xr-x 1 root root   4988 Jul  3 01:04 _startnetkey
+-rwxr-xr-x 1 root root   4949 Jul  3 01:04 _updown
+-rwxr-xr-x 1 root root  14030 Jul  3 01:04 _updown.klips
+-rwxr-xr-x 1 root root  14030 Jul  3 01:04 _updown.klips.old
+-rwxr-xr-x 1 root root  13739 Jul  3 01:04 _updown.mast
+-rwxr-xr-x 1 root root  13739 Jul  3 01:04 _updown.mast.old
+-rwxr-xr-x 1 root root   8337 Jul  3 01:04 _updown.netkey
+-rwxr-xr-x 1 root root 207240 Jul  3 01:04 addconn
+-rwxr-xr-x 1 root root   6129 Jul  3 01:04 auto
+-rwxr-xr-x 1 root root  10758 Jul  3 01:04 barf
+-rwxr-xr-x 1 root root  91752 Jul  3 01:04 eroute
+-rwxr-xr-x 1 root root  22136 Jul  3 01:04 ikeping
+-rwxr-xr-x 1 root root  69096 Jul  3 01:04 klipsdebug
+-rwxr-xr-x 1 root root   1868 Jul  3 01:04 livetest
+-rwxr-xr-x 1 root root   2591 Jul  3 01:04 look
+-rwxr-xr-x 1 root root   1921 Jul  3 01:04 newhostkey
+-rwxr-xr-x 1 root root  62536 Jul  3 01:04 pf_key
+-rwxr-xr-x 1 root root 958760 Jul  3 01:04 pluto
+-rwxr-xr-x 1 root root  11304 Jul  3 01:04 ranbits
+-rwxr-xr-x 1 root root  24200 Jul  3 01:04 rsasigkey
+-rwxr-xr-x 1 root root    766 Jul  3 01:04 secrets
+lrwxrwxrwx 1 root root     30 Aug 25 09:30 setup -> ../../../etc/rc.d/init.d/ipsec
+-rwxr-xr-x 1 root root   1054 Jul  3 01:04 showdefaults
+-rwxr-xr-x 1 root root 232792 Jul  3 01:04 showhostkey
+-rwxr-xr-x 1 root root  24136 Jul  3 01:04 showpolicy
+-rwxr-xr-x 1 root root 164032 Jul  3 01:04 spi
+-rwxr-xr-x 1 root root  79064 Jul  3 01:04 spigrp
+-rwxr-xr-x 1 root root  75136 Jul  3 01:04 tncfg
+-rwxr-xr-x 1 root root  12526 Jul  3 01:04 verify
+-rwxr-xr-x 1 root root  57528 Jul  3 01:04 whack
++ _________________________ /proc/net/dev
++ cat /proc/net/dev
+Inter-|   Receive                                                |  Transmit
+face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+    lo:   14216     124    0    0    0     0          0         0    14216     124    0    0    0     0       0          0
+  eth0: 3278923   32681    0    0    0     0          0         0   516304    3109    0    0    0     0       0          0
+  eth1:  436950    2509    0    0    0     0          0         0   204052    1438    0    0    0     0       0          0
+  eth2:   78284    1222    0    0    0     0          0         0   131712    1378    0    0    0     0       0          0
+  sit0:       0       0    0    0    0     0          0         0        0       0    0    0    0     0       0          0
++ _________________________ /proc/net/route
++ cat /proc/net/route
+Iface    Destination    Gateway     Flags    RefCnt    Use    Metric    Mask        MTU    Window    IRTT                                                       
+lo    0311A8C0    00000000    0005    0    0    0    FFFFFFFF    0    0    0                                                                                 
+eth1    0012A8C0    00000000    0001    0    0    0    00FFFFFF    0    0    0                                                                               
+eth2    0011A8C0    00000000    0001    0    0    0    00FFFFFF    0    0    0                                                                               
+eth0    0000000A    00000000    0001    0    0    0    0000FFFF    0    0    0                                                                               
+eth0    0000FEA9    00000000    0001    0    0    0    0000FFFF    0    0    0                                                                               
+eth0    00000000    0100000A    0003    0    0    0    00000000    0    0    0                                                                               
++ _________________________ /proc/sys/net/ipv4/ip_no_pmtu_disc
++ cat /proc/sys/net/ipv4/ip_no_pmtu_disc
+0
++ _________________________ /proc/sys/net/ipv4/ip_forward
++ cat /proc/sys/net/ipv4/ip_forward
+1
++ _________________________ /proc/sys/net/ipv4/tcp_ecn
++ cat /proc/sys/net/ipv4/tcp_ecn
+0
++ _________________________ /proc/sys/net/ipv4/conf/star-rp_filter
++ cd /proc/sys/net/ipv4/conf
++ egrep '^' all/rp_filter default/rp_filter eth0/rp_filter eth1/rp_filter eth2/rp_filter lo/rp_filter
+all/rp_filter:0
+default/rp_filter:1
+eth0/rp_filter:1
+eth1/rp_filter:1
+eth2/rp_filter:1
+lo/rp_filter:0
++ _________________________ /proc/sys/net/ipv4/conf/star-star-redirects
++ cd /proc/sys/net/ipv4/conf
++ egrep '^' all/accept_redirects all/secure_redirects all/send_redirects default/accept_redirects default/secure_redirects default/send_redirects eth0/accept_redirects eth0/secure_redirects eth0/send_redirects eth1/accept_redirects eth1/secure_redirects eth1/send_redirects eth2/accept_redirects eth2/secure_redirects eth2/send_redirects lo/accept_redirects lo/secure_redirects lo/send_redirects
+all/accept_redirects:0
+all/secure_redirects:1
+all/send_redirects:1
+default/accept_redirects:1
+default/secure_redirects:1
+default/send_redirects:1
+eth0/accept_redirects:1
+eth0/secure_redirects:1
+eth0/send_redirects:1
+eth1/accept_redirects:1
+eth1/secure_redirects:1
+eth1/send_redirects:1
+eth2/accept_redirects:1
+eth2/secure_redirects:1
+eth2/send_redirects:1
+lo/accept_redirects:1
+lo/secure_redirects:1
+lo/send_redirects:1
++ _________________________ /proc/sys/net/ipv4/tcp_window_scaling
++ cat /proc/sys/net/ipv4/tcp_window_scaling
+1
++ _________________________ /proc/sys/net/ipv4/tcp_adv_win_scale
++ cat /proc/sys/net/ipv4/tcp_adv_win_scale
+2
++ _________________________ uname-a
++ uname -a
+Linux localhost.localdomain 2.6.18-128.7.1.el5xen #1 SMP Mon Aug 24 09:14:33 EDT 2009 x86_64 x86_64 x86_64 GNU/Linux
++ _________________________ config-built-with
++ test -r /proc/config_built_with
++ _________________________ distro-release
++ for distro in /etc/redhat-release /etc/debian-release /etc/SuSE-release /etc/mandrake-release /etc/mandriva-release /etc/gentoo-release
++ test -f /etc/redhat-release
++ cat /etc/redhat-release
+CentOS release 5.3 (Final)
++ for distro in /etc/redhat-release /etc/debian-release /etc/SuSE-release /etc/mandrake-release /etc/mandriva-release /etc/gentoo-release
++ test -f /etc/debian-release
++ for distro in /etc/redhat-release /etc/debian-release /etc/SuSE-release /etc/mandrake-release /etc/mandriva-release /etc/gentoo-release
++ test -f /etc/SuSE-release
++ for distro in /etc/redhat-release /etc/debian-release /etc/SuSE-release /etc/mandrake-release /etc/mandriva-release /etc/gentoo-release
++ test -f /etc/mandrake-release
++ for distro in /etc/redhat-release /etc/debian-release /etc/SuSE-release /etc/mandrake-release /etc/mandriva-release /etc/gentoo-release
++ test -f /etc/mandriva-release
++ for distro in /etc/redhat-release /etc/debian-release /etc/SuSE-release /etc/mandrake-release /etc/mandriva-release /etc/gentoo-release
++ test -f /etc/gentoo-release
++ _________________________ /proc/net/ipsec_version
++ test -r /proc/net/ipsec_version
++ test -r /proc/net/pfkey
+++ uname -r
++ echo 'NETKEY (2.6.18-128.7.1.el5xen) support detected '
+NETKEY (2.6.18-128.7.1.el5xen) support detected
++ _________________________ iptables
++ test -r /sbin/iptables
++ iptables -L -v -n
+Chain INPUT (policy ACCEPT 11347 packets, 1483K bytes)
+pkts bytes target     prot opt in     out     source               destination         
+
+Chain FORWARD (policy ACCEPT 1765 packets, 148K bytes)
+pkts bytes target     prot opt in     out     source               destination         
+
+Chain OUTPUT (policy ACCEPT 4923 packets, 775K bytes)
+pkts bytes target     prot opt in     out     source               destination         
++ _________________________ iptables-nat
++ iptables -t nat -L -v -n
+Chain PREROUTING (policy ACCEPT 3819 packets, 645K bytes)
+pkts bytes target     prot opt in     out     source               destination         
+
+Chain POSTROUTING (policy ACCEPT 405 packets, 37761 bytes)
+pkts bytes target     prot opt in     out     source               destination         
+
+Chain OUTPUT (policy ACCEPT 235 packets, 23737 bytes)
+pkts bytes target     prot opt in     out     source               destination         
++ _________________________ iptables-mangle
++ iptables -t mangle -L -v -n
+Chain PREROUTING (policy ACCEPT 13261 packets, 1645K bytes)
+pkts bytes target     prot opt in     out     source               destination         
+
+Chain INPUT (policy ACCEPT 11336 packets, 1483K bytes)
+pkts bytes target     prot opt in     out     source               destination         
+
+Chain FORWARD (policy ACCEPT 1765 packets, 148K bytes)
+pkts bytes target     prot opt in     out     source               destination         
+
+Chain OUTPUT (policy ACCEPT 4903 packets, 773K bytes)
+pkts bytes target     prot opt in     out     source               destination         
+
+Chain POSTROUTING (policy ACCEPT 6668 packets, 921K bytes)
+pkts bytes target     prot opt in     out     source               destination         
++ _________________________ /proc/modules
++ test -f /proc/modules
++ cat /proc/modules
+ipcomp6 41677 0 - Live 0xffffffff883c6000
+ipcomp 41165 0 - Live 0xffffffff883ba000
+ah6 39745 0 - Live 0xffffffff883af000
+ah4 39617 0 - Live 0xffffffff883a4000
+esp6 41921 0 - Live 0xffffffff88398000
+esp4 42049 2 - Live 0xffffffff88381000
+xfrm4_tunnel 35649 0 - Live 0xffffffff88351000
+xfrm4_mode_tunnel 35777 2 - Live 0xffffffff8833d000
+xfrm4_mode_transport 35137 0 - Live 0xffffffff88333000
+xfrm6_mode_transport 35265 0 - Live 0xffffffff88329000
+xfrm6_mode_tunnel 35649 0 - Live 0xffffffff8831f000
+af_key 101333 0 - Live 0xffffffff882ef000
+krng 35137 1 - Live 0xffffffff8850d000
+ansi_cprng 38725 0 - Live 0xffffffff88502000
+chainiv 38465 2 - Live 0xffffffff884f7000
+rng 36941 3 krng,ansi_cprng,chainiv, Live 0xffffffff884ec000
+authenc 39745 2 - Live 0xffffffff884e1000
+hmac 37953 2 - Live 0xffffffff884d6000
+cryptomgr 36929 0 - Live 0xffffffff884cb000
+iptable_mangle 36033 0 - Live 0xffffffff882b3000
+iptable_nat 40773 0 - Live 0xffffffff8829d000
+ip_nat 52973 1 iptable_nat, Live 0xffffffff8828f000
+ip_conntrack 91237 2 iptable_nat,ip_nat, Live 0xffffffff88277000
+nfnetlink 40457 2 ip_nat,ip_conntrack, Live 0xffffffff8826c000
+iptable_filter 36161 0 - Live 0xffffffff88262000
+ip_tables 55201 3 iptable_mangle,iptable_nat,iptable_filter, Live 0xffffffff88235000
+deflate 37057 0 - Live 0xffffffff884c0000
+zlib_deflate 52825 1 deflate, Live 0xffffffff884b2000
+ccm 43201 0 - Live 0xffffffff884a6000
+serpent 51905 0 - Live 0xffffffff88498000
+blowfish 41921 0 - Live 0xffffffff8848c000
+twofish 74945 0 - Live 0xffffffff88478000
+ecb 36673 0 - Live 0xffffffff8846e000
+xcbc 39105 0 - Live 0xffffffff88463000
+crypto_hash 35393 2 hmac,xcbc, Live 0xffffffff88459000
+cbc 37441 2 - Live 0xffffffff8844e000
+md5 37313 0 - Live 0xffffffff88443000
+sha256 41793 0 - Live 0xffffffff88437000
+sha512 38209 0 - Live 0xffffffff8842c000
+des 49729 0 - Live 0xffffffff8841e000
+aes_generic 59393 0 - Live 0xffffffff8840e000
+testmgr_cipher 35905 0 - Live 0xffffffff88404000
+testmgr 79473 1 testmgr_cipher, Live 0xffffffff883ef000
+crypto_blkcipher 48449 6 chainiv,authenc,ccm,ecb,cbc,testmgr, Live 0xffffffff883e2000
+aes_x86_64 58601 2 - Live 0xffffffff883d2000
+xfrm6_esp 39105 1 esp6, Live 0xffffffff8838d000
+xfrm4_esp 39233 1 esp4, Live 0xffffffff88376000
+aead 42049 5 esp6,esp4,authenc,ccm,testmgr, Live 0xffffffff8836a000
+crypto_algapi 54721 13 krng,ansi_cprng,chainiv,authenc,hmac,cryptomgr,ccm,ecb,xcbc,cbc,testmgr,crypto_blkcipher,aead, Live 0xffffffff8835b000
+tunnel4 36552 1 xfrm4_tunnel, Live 0xffffffff88347000
+xfrm6_tunnel 42593 1 ipcomp6, Live 0xffffffff88313000
+tunnel6 36681 1 xfrm6_tunnel, Live 0xffffffff88309000
+sunrpc 197513 1 - Live 0xffffffff882bd000
+ipt_REJECT 38849 0 - Live 0xffffffff882a8000
+ip6t_REJECT 38849 0 - Live 0xffffffff88257000
+xt_tcpudp 36289 0 - Live 0xffffffff8824d000
+x_tables 50377 5 iptable_nat,ip_tables,ipt_REJECT,ip6t_REJECT,xt_tcpudp, Live 0xffffffff88227000
+ipv6 424737 24 ipcomp6,ah6,esp6,xfrm6_mode_transport,xfrm6_esp,xfrm6_tunnel,tunnel6,ip6t_REJECT, Live 0xffffffff881be000
+xfrm_nalgo 43333 7 ah6,ah4,esp6,esp4,xfrm6_esp,xfrm4_esp,ipv6, Live 0xffffffff881b2000
+crypto_api 42945 12 ah6,ah4,esp6,esp4,rng,authenc,ccm,testmgr,crypto_blkcipher,aead,crypto_algapi,xfrm_nalgo, Live 0xffffffff881a6000
+dm_multipath 55257 0 - Live 0xffffffff88197000
+scsi_dh 41665 1 dm_multipath, Live 0xffffffff8818b000
+scsi_mod 197337 1 scsi_dh, Live 0xffffffff88159000
+parport_pc 62313 0 - Live 0xffffffff88148000
+lp 47121 0 - Live 0xffffffff88139000
+parport 73293 2 parport_pc,lp, Live 0xffffffff88126000
+xennet 61129 0 [permanent], Live 0xffffffff88116000
+pcspkr 36289 0 - Live 0xffffffff8810c000
+dm_raid45 98897 0 - Live 0xffffffff880f2000
+dm_message 36289 1 dm_raid45, Live 0xffffffff880e8000
+dm_region_hash 46401 1 dm_raid45, Live 0xffffffff880db000
+dm_mem_cache 39617 1 dm_raid45, Live 0xffffffff880d0000
+dm_snapshot 51593 0 - Live 0xffffffff880c2000
+dm_zero 35265 0 - Live 0xffffffff880b8000
+dm_mirror 54345 0 - Live 0xffffffff880a9000
+dm_log 44993 3 dm_raid45,dm_region_hash,dm_mirror, Live 0xffffffff8809d000
+dm_mod 100753 11 dm_multipath,dm_raid45,dm_snapshot,dm_zero,dm_mirror,dm_log, Live 0xffffffff88083000
+xenblk 50729 3 - Live 0xffffffff88075000
+ext3 168273 2 - Live 0xffffffff8804a000
+jbd 94257 1 ext3, Live 0xffffffff88031000
+uhci_hcd 57561 0 - Live 0xffffffff88021000
+ohci_hcd 56053 0 - Live 0xffffffff88012000
+ehci_hcd 65869 0 - Live 0xffffffff88000000
++ _________________________ /proc/meminfo
++ cat /proc/meminfo
+MemTotal:       262144 kB
+MemFree:          5456 kB
+Buffers:         38836 kB
+Cached:         149752 kB
+SwapCached:          0 kB
+Active:         155156 kB
+Inactive:        45044 kB
+HighTotal:           0 kB
+HighFree:            0 kB
+LowTotal:       262144 kB
+LowFree:          5456 kB
+SwapTotal:      622584 kB
+SwapFree:       622548 kB
+Dirty:              56 kB
+Writeback:           0 kB
+AnonPages:       11640 kB
+Mapped:           6260 kB
+Slab:            26008 kB
+PageTables:       2228 kB
+NFS_Unstable:        0 kB
+Bounce:              0 kB
+CommitLimit:    753656 kB
+Committed_AS:    26520 kB
+VmallocTotal: 34359738367 kB
+VmallocUsed:       528 kB
+VmallocChunk: 34359737819 kB
++ _________________________ /proc/net/ipsec-ls
++ test -f /proc/net/ipsec_version
++ _________________________ usr/src/linux/.config
++ test -f /proc/config.gz
+++ uname -r
++ test -f /lib/modules/2.6.18-128.7.1.el5xen/build/.config
++ echo 'no .config file found, cannot list kernel properties'
+no .config file found, cannot list kernel properties
++ _________________________ etc/syslog.conf
++ _________________________ etc/syslog-ng/syslog-ng.conf
++ cat /etc/syslog-ng/syslog-ng.conf
+cat: /etc/syslog-ng/syslog-ng.conf: No such file or directory
++ cat /etc/syslog.conf
+# Log all kernel messages to the console.
+# Logging much else clutters up the screen.
+#kern.*                            /dev/console
+
+# Log anything (except mail) of level info or higher.
+# Don't log private authentication messages!
+*.info;mail.none;authpriv.none;cron.none        /var/log/messages
+
+# The authpriv file has restricted access.
+authpriv.*                        /var/log/secure
+
+# Log all the mail messages in one place.
+mail.*                            -/var/log/maillog
+
+
+# Log cron stuff
+cron.*                            /var/log/cron
+
+# Everybody gets emergency messages
+*.emerg                            *
+
+# Save news errors of level crit and higher in a special file.
+uucp,news.crit                        /var/log/spooler
+
+# Save boot messages also to boot.log
+local7.*                        /var/log/boot.log
++ _________________________ etc/resolv.conf
++ cat /etc/resolv.conf
+; generated by /sbin/dhclient-script
+search localfarm
+nameserver 130.233.40.5
+nameserver 130.233.192.1
+nameserver 130.233.224.1
++ _________________________ lib/modules-ls
++ ls -ltr /lib/modules
+total 8
+drwxr-xr-x 6 root root 4096 Aug 25 08:32 2.6.18-128.7.1.el5xen
+drwxr-xr-x 6 root root 4096 Nov  3 22:13 2.6.18-164.2.1.el5xen
++ _________________________ /proc/ksyms-netif_rx
++ test -r /proc/ksyms
++ test -r /proc/kallsyms
++ egrep netif_rx /proc/kallsyms
+ffffffff8024f9ef T netif_rx_ni
+ffffffff804101a4 T __netif_rx_schedule
+ffffffff80410686 T netif_rx
+ffffffff80410686 U netif_rx    [xfrm6_esp]
+ffffffff80410686 U netif_rx    [xfrm4_esp]
+ffffffff80410686 U netif_rx    [ipv6]
+ffffffff804101a4 U __netif_rx_schedule    [xennet]
++ _________________________ lib/modules-netif_rx
++ modulegoo kernel/net/ipv4/ipip.o netif_rx
++ set +x
+2.6.18-128.7.1.el5xen:
+2.6.18-164.2.1.el5xen:
++ _________________________ kern.debug
++ test -f /var/log/kern.debug
++ _________________________ klog
++ sed -n '411,$p' /var/log/messages
++ egrep -i 'ipsec|klips|pluto'
++ case "$1" in
++ cat
+Nov 13 00:23:54 localhost ipsec_setup: Starting Openswan IPsec U2.6.14/K2.6.18-128.7.1.el5xen...
+Nov 13 00:23:54 localhost ipsec_setup:
+Nov 13 00:23:54 localhost ipsec__plutorun: defaulting rightsubnet to 192.168.17.3
+Nov 13 00:23:54 localhost ipsec_setup:
+Nov 13 00:23:54 localhost ipsec_setup: defaulting rightsubnet to 192.168.17.3
+Nov 13 00:23:54 localhost ipsec_starter[18509]: defaulting rightsubnet to 192.168.17.3
+Nov 13 00:23:54 localhost ipsec__plutorun: defaulting rightsubnet to 192.168.17.3
+Nov 13 00:23:54 localhost ipsec_starter[18520]: defaulting rightsubnet to 192.168.17.3
+Nov 13 00:23:54 localhost ipsec__plutorun: defaulting rightsubnet to 192.168.17.3
+Nov 13 00:23:54 localhost ipsec_starter[18521]: defaulting rightsubnet to 192.168.17.3
+Nov 13 00:23:54 localhost ipsec__plutorun: 002 added connection description "road"
++ _________________________ plog
++ sed -n '2997,$p' /var/log/secure
++ egrep -i pluto
++ case "$1" in
++ cat
+Nov 13 00:23:54 localhost ipsec__plutorun: Starting Pluto subsystem...
+Nov 13 00:23:54 localhost pluto[18500]: Starting Pluto (Openswan Version 2.6.14; Vendor ID OEoSJUweaqAX) pid:18500
+Nov 13 00:23:54 localhost pluto[18500]: Setting NAT-Traversal port-4500 floating to on
+Nov 13 00:23:54 localhost pluto[18500]:    port floating activation criteria nat_t=1/port_float=1
+Nov 13 00:23:54 localhost pluto[18500]:    including NAT-Traversal patch (Version 0.6c)
+Nov 13 00:23:54 localhost pluto[18500]: using /dev/urandom as source of random entropy
+Nov 13 00:23:54 localhost pluto[18500]: ike_alg_register_enc(): Activating OAKLEY_TWOFISH_CBC_SSH: Ok (ret=0)
+Nov 13 00:23:54 localhost pluto[18500]: ike_alg_register_enc(): Activating OAKLEY_TWOFISH_CBC: Ok (ret=0)
+Nov 13 00:23:54 localhost pluto[18500]: ike_alg_register_enc(): Activating OAKLEY_SERPENT_CBC: Ok (ret=0)
+Nov 13 00:23:54 localhost pluto[18500]: ike_alg_register_enc(): Activating OAKLEY_AES_CBC: Ok (ret=0)
+Nov 13 00:23:54 localhost pluto[18500]: ike_alg_register_enc(): Activating OAKLEY_BLOWFISH_CBC: Ok (ret=0)
+Nov 13 00:23:54 localhost pluto[18500]: ike_alg_register_hash(): Activating OAKLEY_SHA2_512: Ok (ret=0)
+Nov 13 00:23:54 localhost pluto[18500]: ike_alg_register_hash(): Activating OAKLEY_SHA2_256: Ok (ret=0)
+Nov 13 00:23:54 localhost pluto[18500]: starting up 1 cryptographic helpers
+Nov 13 00:23:54 localhost pluto[18510]: using /dev/urandom as source of random entropy
+Nov 13 00:23:54 localhost pluto[18500]: started helper pid=18510 (fd:7)
+Nov 13 00:23:54 localhost pluto[18500]: Using Linux 2.6 IPsec interface code on 2.6.18-128.7.1.el5xen (experimental code)
+Nov 13 00:23:54 localhost pluto[18500]: ike_alg_register_enc(): WARNING: enc alg=0 not found in constants.c:oakley_enc_names 
+Nov 13 00:23:54 localhost pluto[18500]: ike_alg_register_enc(): Activating <NULL>: Ok (ret=0)
+Nov 13 00:23:54 localhost pluto[18500]: ike_alg_register_enc(): WARNING: enc alg=0 not found in constants.c:oakley_enc_names 
+Nov 13 00:23:54 localhost pluto[18500]: ike_alg_add(): ERROR: Algorithm already exists
+Nov 13 00:23:54 localhost pluto[18500]: ike_alg_register_enc(): Activating <NULL>: FAILED (ret=-17)
+Nov 13 00:23:54 localhost pluto[18500]: ike_alg_register_enc(): WARNING: enc alg=0 not found in constants.c:oakley_enc_names 
+Nov 13 00:23:54 localhost pluto[18500]: ike_alg_add(): ERROR: Algorithm already exists
+Nov 13 00:23:54 localhost pluto[18500]: ike_alg_register_enc(): Activating <NULL>: FAILED (ret=-17)
+Nov 13 00:23:54 localhost pluto[18500]: ike_alg_register_enc(): WARNING: enc alg=0 not found in constants.c:oakley_enc_names 
+Nov 13 00:23:54 localhost pluto[18500]: ike_alg_add(): ERROR: Algorithm already exists
+Nov 13 00:23:54 localhost pluto[18500]: ike_alg_register_enc(): Activating <NULL>: FAILED (ret=-17)
+Nov 13 00:23:54 localhost pluto[18500]: ike_alg_register_enc(): WARNING: enc alg=0 not found in constants.c:oakley_enc_names 
+Nov 13 00:23:54 localhost pluto[18500]: ike_alg_add(): ERROR: Algorithm already exists
+Nov 13 00:23:54 localhost pluto[18500]: ike_alg_register_enc(): Activating <NULL>: FAILED (ret=-17)
+Nov 13 00:23:54 localhost pluto[18500]: ike_alg_register_enc(): WARNING: enc alg=0 not found in constants.c:oakley_enc_names 
+Nov 13 00:23:54 localhost pluto[18500]: ike_alg_add(): ERROR: Algorithm already exists
+Nov 13 00:23:54 localhost pluto[18500]: ike_alg_register_enc(): Activating <NULL>: FAILED (ret=-17)
+Nov 13 00:23:54 localhost pluto[18500]: Could not change to directory '/etc/ipsec.d/cacerts': /root
+Nov 13 00:23:54 localhost pluto[18500]: Could not change to directory '/etc/ipsec.d/aacerts': /root
+Nov 13 00:23:54 localhost pluto[18500]: Could not change to directory '/etc/ipsec.d/ocspcerts': /root
+Nov 13 00:23:54 localhost pluto[18500]: Could not change to directory '/etc/ipsec.d/crls'
+Nov 13 00:23:54 localhost pluto[18500]: Changing back to directory '/root' failed - (2 No such file or directory)
+Nov 13 00:23:54 localhost pluto[18500]: Changing back to directory '/root' failed - (2 No such file or directory)
+Nov 13 00:23:54 localhost pluto[18500]: added connection description "road"
+Nov 13 00:23:54 localhost pluto[18500]: listening for IKE messages
+Nov 13 00:23:54 localhost pluto[18500]: adding interface eth2/eth2 192.168.17.2:500
+Nov 13 00:23:54 localhost pluto[18500]: adding interface eth2/eth2 192.168.17.2:4500
+Nov 13 00:23:54 localhost pluto[18500]: adding interface eth1/eth1 192.168.18.1:500
+Nov 13 00:23:54 localhost pluto[18500]: adding interface eth1/eth1 192.168.18.1:4500
+Nov 13 00:23:54 localhost pluto[18500]: adding interface eth0/eth0 10.0.19.1:500
+Nov 13 00:23:54 localhost pluto[18500]: adding interface eth0/eth0 10.0.19.1:4500
+Nov 13 00:23:54 localhost pluto[18500]: adding interface lo/lo 127.0.0.1:500
+Nov 13 00:23:54 localhost pluto[18500]: adding interface lo/lo 127.0.0.1:4500
+Nov 13 00:23:54 localhost pluto[18500]: adding interface lo/lo ::1:500
+Nov 13 00:23:54 localhost pluto[18500]: loading secrets from "/etc/ipsec.secrets"
+Nov 13 00:23:54 localhost pluto[18500]: loading secrets from "/etc/ipsec.d/gw-rw.secrets"
+Nov 13 00:23:54 localhost pluto[18500]: loaded private key for keyid: PPK_RSA:AQOBwn/0S
+Nov 13 00:23:58 localhost pluto[18500]: packet from 192.168.18.2:500: Informational Exchange is for an unknown (expired?) SA
+Nov 13 00:23:58 localhost pluto[18500]: packet from 192.168.18.2:500: Informational Exchange is for an unknown (expired?) SA
+Nov 13 00:25:03 localhost pluto[18500]: packet from 192.168.18.2:500: received Vendor ID payload [Openswan (this version) 2.6.14 ]
+Nov 13 00:25:03 localhost pluto[18500]: packet from 192.168.18.2:500: received Vendor ID payload [Dead Peer Detection]
+Nov 13 00:25:03 localhost pluto[18500]: packet from 192.168.18.2:500: received Vendor ID payload [RFC 3947] method set to=109
+Nov 13 00:25:03 localhost pluto[18500]: packet from 192.168.18.2:500: received Vendor ID payload [draft-ietf-ipsec-nat-t-ike-03] meth=108, but already using method 109
+Nov 13 00:25:03 localhost pluto[18500]: packet from 192.168.18.2:500: received Vendor ID payload [draft-ietf-ipsec-nat-t-ike-02_n] meth=106, but already using method 109
+Nov 13 00:25:03 localhost pluto[18500]: packet from 192.168.18.2:500: received Vendor ID payload [draft-ietf-ipsec-nat-t-ike-02] meth=107, but already using method 109
+Nov 13 00:25:03 localhost pluto[18500]: "road"[1] 192.168.18.2 #1: responding to Main Mode from unknown peer 192.168.18.2
+Nov 13 00:25:03 localhost pluto[18500]: "road"[1] 192.168.18.2 #1: transition from state STATE_MAIN_R0 to state STATE_MAIN_R1
+Nov 13 00:25:03 localhost pluto[18500]: "road"[1] 192.168.18.2 #1: STATE_MAIN_R1: sent MR1, expecting MI2
+Nov 13 00:25:03 localhost pluto[18500]: "road"[1] 192.168.18.2 #1: NAT-Traversal: Result using RFC 3947 (NAT-Traversal): no NAT detected
+Nov 13 00:25:03 localhost pluto[18500]: "road"[1] 192.168.18.2 #1: transition from state STATE_MAIN_R1 to state STATE_MAIN_R2
+Nov 13 00:25:03 localhost pluto[18500]: "road"[1] 192.168.18.2 #1: STATE_MAIN_R2: sent MR2, expecting MI3
+Nov 13 00:25:03 localhost pluto[18500]: "road"[1] 192.168.18.2 #1: Main mode peer ID is ID_IPV4_ADDR: '192.168.18.2'
+Nov 13 00:25:03 localhost pluto[18500]: "road"[1] 192.168.18.2 #1: transition from state STATE_MAIN_R2 to state STATE_MAIN_R3
+Nov 13 00:25:03 localhost pluto[18500]: "road"[1] 192.168.18.2 #1: STATE_MAIN_R3: sent MR3, ISAKMP SA established {auth=OAKLEY_RSA_SIG cipher=aes_128 prf=oakley_sha group=modp2048}
+Nov 13 00:25:03 localhost pluto[18500]: "road"[1] 192.168.18.2 #1: the peer proposed: 192.168.17.0/24:0/0 -> 192.168.17.3/32:0/0
+Nov 13 00:25:03 localhost pluto[18500]: "road"[1] 192.168.18.2 #1: alloc_bytes1() was mistakenly asked to malloc 0 bytes for st_skey_ar in duplicate_state, please report to dev@openswan.org
+Nov 13 00:25:03 localhost pluto[18500]: "road"[1] 192.168.18.2 #1: alloc_bytes1() was mistakenly asked to malloc 0 bytes for st_skey_er in duplicate_state, please report to dev@openswan.org
+Nov 13 00:25:03 localhost pluto[18500]: "road"[1] 192.168.18.2 #1: alloc_bytes1() was mistakenly asked to malloc 0 bytes for st_skey_pi in duplicate_state, please report to dev@openswan.org
+Nov 13 00:25:03 localhost pluto[18500]: "road"[1] 192.168.18.2 #1: alloc_bytes1() was mistakenly asked to malloc 0 bytes for st_skey_pr in duplicate_state, please report to dev@openswan.org
+Nov 13 00:25:03 localhost pluto[18500]: "road"[1] 192.168.18.2 #2: responding to Quick Mode proposal {msgid:22367b19}
+Nov 13 00:25:03 localhost pluto[18500]: "road"[1] 192.168.18.2 #2:     us: 192.168.17.0/24===192.168.18.1<192.168.18.1>[+S=C]
+Nov 13 00:25:03 localhost pluto[18500]: "road"[1] 192.168.18.2 #2:   them: 192.168.18.2[+S=C]===192.168.17.3/32
+Nov 13 00:25:03 localhost pluto[18500]: "road"[1] 192.168.18.2 #2: transition from state STATE_QUICK_R0 to state STATE_QUICK_R1
+Nov 13 00:25:03 localhost pluto[18500]: "road"[1] 192.168.18.2 #2: STATE_QUICK_R1: sent QR1, inbound IPsec SA installed, expecting QI2
+Nov 13 00:25:03 localhost pluto[18500]: "road"[1] 192.168.18.2 #2: transition from state STATE_QUICK_R1 to state STATE_QUICK_R2
+Nov 13 00:25:03 localhost pluto[18500]: "road"[1] 192.168.18.2 #2: STATE_QUICK_R2: IPsec SA established tunnel mode {ESP=>0x3845474e <0x5edb6d60 xfrm=AES_128-HMAC_SHA1 NATOA=<invalid> NATD=<invalid>:500 DPD=enabled}
+Nov 13 00:46:01 localhost pluto[18500]: "road"[1] 192.168.18.2 #1: received Delete SA(0x3845474e) payload: deleting IPSEC State #2
+Nov 13 00:46:01 localhost pluto[18500]: "road"[1] 192.168.18.2 #2: request to replace with shunt a prospective erouted policy with netkey kernel --- experimental
+Nov 13 00:46:01 localhost pluto[18500]: "road"[1] 192.168.18.2 #1: received and ignored informational message
+Nov 13 00:46:01 localhost pluto[18500]: "road"[1] 192.168.18.2 #1: received Delete SA payload: deleting ISAKMP State #1
+Nov 13 00:46:01 localhost pluto[18500]: "road"[1] 192.168.18.2: deleting connection "road" instance with peer 192.168.18.2 {isakmp=#0/ipsec=#0}
+Nov 13 00:46:01 localhost pluto[18500]: "road": request to delete a unrouted policy with netkey kernel --- experimental
+Nov 13 00:46:01 localhost pluto[18500]: packet from 192.168.18.2:500: received and ignored informational message
+Nov 13 00:46:10 localhost pluto[18500]: packet from 192.168.18.2:500: received Vendor ID payload [Openswan (this version) 2.6.14 ]
+Nov 13 00:46:10 localhost pluto[18500]: packet from 192.168.18.2:500: received Vendor ID payload [Dead Peer Detection]
+Nov 13 00:46:10 localhost pluto[18500]: packet from 192.168.18.2:500: received Vendor ID payload [RFC 3947] method set to=109
+Nov 13 00:46:10 localhost pluto[18500]: packet from 192.168.18.2:500: received Vendor ID payload [draft-ietf-ipsec-nat-t-ike-03] meth=108, but already using method 109
+Nov 13 00:46:10 localhost pluto[18500]: packet from 192.168.18.2:500: received Vendor ID payload [draft-ietf-ipsec-nat-t-ike-02_n] meth=106, but already using method 109
+Nov 13 00:46:10 localhost pluto[18500]: packet from 192.168.18.2:500: received Vendor ID payload [draft-ietf-ipsec-nat-t-ike-02] meth=107, but already using method 109
+Nov 13 00:46:10 localhost pluto[18500]: "road"[2] 192.168.18.2 #3: responding to Main Mode from unknown peer 192.168.18.2
+Nov 13 00:46:10 localhost pluto[18500]: "road"[2] 192.168.18.2 #3: transition from state STATE_MAIN_R0 to state STATE_MAIN_R1
+Nov 13 00:46:10 localhost pluto[18500]: "road"[2] 192.168.18.2 #3: STATE_MAIN_R1: sent MR1, expecting MI2
+Nov 13 00:46:10 localhost pluto[18500]: "road"[2] 192.168.18.2 #3: NAT-Traversal: Result using RFC 3947 (NAT-Traversal): no NAT detected
+Nov 13 00:46:10 localhost pluto[18500]: "road"[2] 192.168.18.2 #3: transition from state STATE_MAIN_R1 to state STATE_MAIN_R2
+Nov 13 00:46:10 localhost pluto[18500]: "road"[2] 192.168.18.2 #3: STATE_MAIN_R2: sent MR2, expecting MI3
+Nov 13 00:46:10 localhost pluto[18500]: "road"[2] 192.168.18.2 #3: Main mode peer ID is ID_IPV4_ADDR: '192.168.18.2'
+Nov 13 00:46:10 localhost pluto[18500]: "road"[2] 192.168.18.2 #3: transition from state STATE_MAIN_R2 to state STATE_MAIN_R3
+Nov 13 00:46:10 localhost pluto[18500]: "road"[2] 192.168.18.2 #3: STATE_MAIN_R3: sent MR3, ISAKMP SA established {auth=OAKLEY_RSA_SIG cipher=aes_128 prf=oakley_sha group=modp2048}
+Nov 13 00:46:10 localhost pluto[18500]: "road"[2] 192.168.18.2 #3: the peer proposed: 192.168.17.0/24:0/0 -> 192.168.17.3/32:0/0
+Nov 13 00:46:10 localhost pluto[18500]: "road"[2] 192.168.18.2 #3: alloc_bytes1() was mistakenly asked to malloc 0 bytes for st_skey_ar in duplicate_state, please report to dev@openswan.org
+Nov 13 00:46:10 localhost pluto[18500]: "road"[2] 192.168.18.2 #3: alloc_bytes1() was mistakenly asked to malloc 0 bytes for st_skey_er in duplicate_state, please report to dev@openswan.org
+Nov 13 00:46:10 localhost pluto[18500]: "road"[2] 192.168.18.2 #3: alloc_bytes1() was mistakenly asked to malloc 0 bytes for st_skey_pi in duplicate_state, please report to dev@openswan.org
+Nov 13 00:46:10 localhost pluto[18500]: "road"[2] 192.168.18.2 #3: alloc_bytes1() was mistakenly asked to malloc 0 bytes for st_skey_pr in duplicate_state, please report to dev@openswan.org
+Nov 13 00:46:10 localhost pluto[18500]: "road"[2] 192.168.18.2 #4: responding to Quick Mode proposal {msgid:ee72a0e5}
+Nov 13 00:46:10 localhost pluto[18500]: "road"[2] 192.168.18.2 #4:     us: 192.168.17.0/24===192.168.18.1<192.168.18.1>[+S=C]
+Nov 13 00:46:10 localhost pluto[18500]: "road"[2] 192.168.18.2 #4:   them: 192.168.18.2[+S=C]===192.168.17.3/32
+Nov 13 00:46:10 localhost pluto[18500]: "road"[2] 192.168.18.2 #4: transition from state STATE_QUICK_R0 to state STATE_QUICK_R1
+Nov 13 00:46:10 localhost pluto[18500]: "road"[2] 192.168.18.2 #4: STATE_QUICK_R1: sent QR1, inbound IPsec SA installed, expecting QI2
+Nov 13 00:46:10 localhost pluto[18500]: "road"[2] 192.168.18.2 #4: transition from state STATE_QUICK_R1 to state STATE_QUICK_R2
+Nov 13 00:46:10 localhost pluto[18500]: "road"[2] 192.168.18.2 #4: STATE_QUICK_R2: IPsec SA established tunnel mode {ESP=>0xa41731ab <0xa2c3fa57 xfrm=AES_128-HMAC_SHA1 NATOA=<invalid> NATD=<invalid>:500 DPD=enabled}
++ _________________________ date
++ date
+Fri Nov 13 01:11:01 EET 2009
+
+
+
+
+5.2 How would you improve this assignment? Did you have any problems
+    in following the instructions?  [extra 2p]
+
+
+
+Sources:
+1. http://www.linuxhomenetworking.com/wiki/index.php/Quick_HOWTO_:_Ch35_:_Configuring_Linux_VPNs#The_.2Fetc.2Fipsec.conf_file
+2. http://www.faqs.org/docs/securing/chap25sec203e.html
+3. http://www.faqs.org/docs/securing/chap25sec204.html
+4. http://www.nisi.ab.ca/lrp/Packages/man/IPSec1.91/ipsec.html
+5. http://www.informit.com/articles/article.aspx?p=25443
+6. http://www.packtpub.com/article/network-configuration-tunneling-with-free-bsd
+7. http://www.process.com/tcpip/mndocs51/ADMIN_GUIDE/Ch31.htm
